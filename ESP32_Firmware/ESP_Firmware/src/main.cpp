@@ -3,19 +3,34 @@
 #include "esp_camera.h"
 
 
-// put function declarations here:
-int myFunction(int, int);
+const char* SSID = "";
+const char* PASSWORD = "a";
 
 void setup() {
   // put your setup code here, to run once:
-  int result = myFunction(2, 3);
+  Serial.println("Starting ESP-32");
+
+  WiFi.begin(SSID, PASSWORD);
+
+  if (WiFi.status() == WL_NO_SHIELD) {
+    Serial.println("Shield Missing");
+  }
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+    if (WiFi.status() == WL_CONNECT_FAILED) {
+      Serial.println(" Connection Failed");
+      return;
+    }
+  }
+  Serial.println("");
+  Serial.println("Wifi-Connected");
+  Serial.println("Camera IP: " + WiFi.localIP());
+
+
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-}
-
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
 }
