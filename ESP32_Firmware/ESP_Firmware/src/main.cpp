@@ -1,16 +1,22 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include "esp_camera.h"
+#include "Constants.h"
 
 
-const char* SSID = "";
-const char* PASSWORD = "a";
 
 void setup() {
-  // put your setup code here, to run once:
+  Serial.begin(115200);
   Serial.println("Starting ESP-32");
 
-  WiFi.begin(SSID, PASSWORD);
+  if (!esp_camera_init(&CameraConstants::CONFIG)) {
+    Serial.println("Camera initilization failed");
+    return;
+  } else {
+    Serial.println("Camera connected");
+  }
+
+  WiFi.begin(WifiConstants::SSID, WifiConstants::PASSWORD);
 
   if (WiFi.status() == WL_NO_SHIELD) {
     Serial.println("Shield Missing");
@@ -28,7 +34,7 @@ void setup() {
   Serial.println("Wifi-Connected");
   Serial.println("Camera IP: " + WiFi.localIP());
 
-
+  
 }
 
 void loop() {
