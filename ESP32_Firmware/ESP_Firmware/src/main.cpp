@@ -3,7 +3,16 @@
 #include "esp_camera.h"
 #include "Constants.h"
 
+void GetJPEGImage(uint8_t *&buffer, size_t &size) {
+  camera_fb_t *frame_buffer = esp_camera_fb_get();
+  
+  bool convert_success = fmt2jpg(frame_buffer->buf, frame_buffer->len, frame_buffer->width, frame_buffer->height, frame_buffer->format, CameraConstants::QUALITY, &buffer, &size);
+  if (convert_success != true) {
+    Serial.println("Conversion Failed");
+  }
 
+  esp_camera_fb_return(frame_buffer);
+}
 
 void setup() {
   Serial.begin(115200);
@@ -39,4 +48,6 @@ void setup() {
 
 void loop() {
   // put your main code here, to run repeatedly:
+  
+  
 }

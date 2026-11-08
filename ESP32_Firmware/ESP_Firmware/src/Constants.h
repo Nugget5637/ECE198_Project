@@ -5,6 +5,7 @@
 
 namespace CameraConstants {
     extern const camera_config_t CONFIG;
+    extern const int QUALITY;
 }
 namespace WifiConstants {
     extern const char* SSID;
