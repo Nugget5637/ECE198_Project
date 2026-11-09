@@ -701,3 +701,5 @@ select option { background: var(--paper); color: var(--ink); }
   .ring-arc, .bar i { transition: none; }
   .issues.alert { animation: none; }
 }
+.wk-note { margin: 2px 0 4px; }
+.wk-ex small { font-weight: 400; }

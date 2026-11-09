@@ -133,10 +133,10 @@
           const li = h('li', null,
             h('span', { class: 'ex-line' },
               h('span', { class: 'ex-name' }, CC.exerciseName(e.exercise),
-                large ? h('span', { class: 'ex-plan' }, ` ${e.sets}×${e.reps}`) : null),
+                large ? h('span', { class: 'ex-plan' }, ` ${CC.planText(e)}`) : null),
               count),
             b.el);
-          li.title = `${CC.exerciseName(e.exercise)}: ${e.sets} ${e.sets === 1 ? 'set' : 'sets'} of ${e.reps}`;
+          li.title = CC.describeWorkout([e], true);
           return { li, count, bar: b };
         });
         exList.replaceChildren(...rows.map((r) => r.li));
