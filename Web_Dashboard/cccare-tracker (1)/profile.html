@@ -29,10 +29,31 @@
     <form class="profile-form" id="profile" novalidate>
       <h2>Edit profile</h2>
 
-      <label for="photo">Profile picture</label>
-      <div class="photo-row">
-        <input id="photo" name="photo" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+      <span class="field-label" id="photo-label">Profile picture</span>
+      <div class="photo-row" role="group" aria-labelledby="photo-label">
+        <!-- The file box is hidden but still focusable; the paperclip is its label. -->
+        <input id="photo" name="photo" type="file" class="sr-only" accept="image/png,image/jpeg,image/webp,image/gif">
+        <label for="photo" class="icon-btn photo-btn" title="Choose a picture file">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          <span class="sr-only">Choose a picture file</span>
+        </label>
+        <button type="button" class="icon-btn photo-btn" id="take-photo" title="Take a picture with the camera">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          <span class="sr-only">Take a picture with the camera</span>
+        </button>
+        <span class="mono muted" id="photo-hint">Choose a file or take a picture</span>
         <button type="button" class="btn btn-light" id="remove-photo">Remove picture</button>
+      </div>
+
+      <div class="camera" id="camera" hidden>
+        <div class="camera-frame">
+          <video id="camera-video" playsinline muted autoplay aria-label="Camera preview"></video>
+        </div>
+        <p class="mono muted">The square in the middle becomes your picture.</p>
+        <div class="camera-actions">
+          <button type="button" class="btn" id="capture">Take picture</button>
+          <button type="button" class="btn btn-light" id="camera-cancel">Cancel</button>
+        </div>
       </div>
 
       <label for="birthday">Birthday</label>
@@ -54,6 +75,7 @@
     <p>Prototype. Your profile is saved in this browser only.</p>
   </footer>
 
+  <script src="js/config.js"></script>
   <script src="js/util.js"></script>
   <script src="js/exercises.js"></script>
   <script src="js/score.js"></script>

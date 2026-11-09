@@ -11,6 +11,17 @@ The site is plain HTML, CSS and JavaScript. There is no build step and no librar
 
 Because the patient screen follows the instructor's session through this browser's storage, see them both at once by opening `instructor.html` in one tab (signed in as the instructor) and `patient.html` in another (signed in as the patient), in the same browser.
 
+## Connecting a backend
+
+Out of the box everything is kept in the browser, so the site runs with no server. To keep the data on a server instead:
+
+1. **Use the reference server.** Run `python3 server/server.py` in this folder (Python 3.8 or later, no packages needed) and open <http://localhost:8000>. The server serves the site and the API together, so nothing needs configuring. It stores the data in `server/data.json` (not committed to git), checks sign-ins on the server with hashed passwords, and lets patient screens follow the instructor from other devices. Add `--host 0.0.0.0` to let phones and laptops on the same network connect.
+2. **Use your own server.** Implement the endpoints in [API.md](API.md), in any language, then set `apiBase` in `js/config.js` to its address. You can also add `?api=https://your-server/api` to any page's address to try it without editing anything. `?api=off` switches back to browser storage.
+
+Behind the scenes, all saving and loading goes through one file, `js/store.js`. Each page runs inside `CC.start(...)`, which loads the signed-in person's data from the backend first. If the backend can't be reached, the page says so and doesn't fail silently. Saving a session, a profile or the roster waits for the server's answer. If the save fails, the page shows the reason, and for a session it offers to try again.
+
+The reference server is a starting point, not a hardened production server. Put it behind HTTPS before real patient data goes near it.
+
 ## Putting it online
 
 It is a static site, so any static host works. Two free options:
@@ -98,6 +109,8 @@ The thresholds are in `LIMITS` in `js/score.js`. The exercises, their faults and
 
 **Ending early.** If the instructor ends the session before someone has finished, their result only counts the exercises they reached, and the sets of the current exercise up to the one they were on; exercises they never got to aren't counted against them. The session results page then opens with an alert saying the session was ended early and where each unfinished person stopped (exercise, set and reps in that set). That patient's results page shows the same note.
 
+**Profile picture.** On the profile page, the paperclip chooses a picture file. The camera button asks the browser for camera access, shows a mirrored preview with the square that will be used, and takes the picture. Browsers only allow the camera on `https://` pages and `localhost`; elsewhere, and when access is blocked, the page says so and the paperclip still works. The camera turns off as soon as the picture is taken, cancelled or the page is left.
+
 **Look.** Text is set in DM Sans (bundled in `css/fonts/`, SIL Open Font License). The moon button in the top right switches night mode; the choice is remembered in this browser. The GitHub button next to it opens the repository.
 
 ## How the patient screen follows the instructor
@@ -168,6 +181,9 @@ If the site is served over `https://`, browsers block plain `ws://` connections,
 ## Files
 
 ```
+API.md                   the REST API a backend provides
+server/server.py         reference backend: serves the site and the API (plain Python)
+js/config.js             where data is kept: this browser, or a backend
 index.html               sign in and sign up
 instructor.html          set-up, workout editor and live dashboard
 patient.html             patient's live block, driven by the instructor
@@ -181,7 +197,7 @@ js/theme.js              night mode and the GitHub button (loaded in each page's
 js/util.js               helpers (dates, durations, random numbers, safe element building)
 js/exercises.js          exercises, fault messages, cues, sample workouts
 js/score.js              workout scoring, thresholds, live tracker
-js/store.js              accounts, roster, saved sessions, sample history, live link
+js/store.js              accounts, roster, sessions, profiles, live link: browser storage or the backend
 js/feed.js               simulator and WebSocket feed
 js/ui.js                 wheel, bars, participant block, shared page parts
 js/chart.js              progress line graph

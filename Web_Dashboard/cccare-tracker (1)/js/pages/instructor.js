@@ -1,6 +1,6 @@
 /* Instructor: set up the class and each person's workout, watch everyone live, pause or
    end the session. */
-(function () {
+CC.start(function () {
   'use strict';
   const account = CC.auth.require('instructor');
   if (!account) return;
@@ -241,7 +241,7 @@
   setCount(count);
 
   document.getElementById('start').addEventListener('click', () => {
-    CC.roster.save(roster);
+    CC.roster.save(roster).catch((e) => alert(`The names and workouts weren’t saved: ${e.message}`));
     CC.store.setLastCount(count);
     startLive(CC.roster.all().slice(0, count));
   });
@@ -367,16 +367,17 @@
     window.addEventListener('beforeunload', guard);
     // Leaving the page mid-session stops it for patients too.
     window.addEventListener('pagehide', () => {
-      if (running) CC.live.write({ state: 'abandoned', id: sessionId, updatedAt: Date.now() });
+      if (running) CC.live.write({ state: 'abandoned', id: sessionId, updatedAt: Date.now() }, { final: true });
     });
 
-    CC.ui.confirmButton(document.getElementById('end'), 'Press again to end', () => {
+    const endBtn = document.getElementById('end');
+    CC.ui.confirmButton(endBtn, 'Press again to end', async () => {
       running = false;
       clearInterval(timer);
       feed.stop();
       const endedAt = Date.now();
       const participants = [...trackers.values()].map((t) => t.result());
-      CC.sessions.add({
+      const session = {
         id: sessionId,
         startedAt: new Date(startedAt).toISOString(),
         endedAt: new Date(endedAt).toISOString(),
@@ -384,11 +385,26 @@
         endedEarly: participants.some((p) => p.stoppedAt),
         elapsedMs: sessionNow() - startedAt,
         participants,
-      });
+      };
+      endBtn.disabled = true;
+      endBtn.textContent = 'Saving…';
+      // The results page reads the saved session, so wait for the save. If it fails (for
+      // example the server is down), offer to try again rather than lose the session.
+      for (;;) {
+        try {
+          await CC.sessions.add(session);
+          break;
+        } catch (e) {
+          if (!confirm(`The results weren’t saved: ${e.message}\n\nTry again?`)) {
+            endBtn.textContent = 'Not saved';
+            return;
+          }
+        }
+      }
       // Tells patient pages the results are saved, so they can open them.
-      CC.live.write({ state: 'ended', id: sessionId, updatedAt: endedAt });
+      await CC.live.write({ state: 'ended', id: sessionId, updatedAt: endedAt });
       window.removeEventListener('beforeunload', guard);
       location.href = 'session-results.html?s=' + encodeURIComponent(sessionId);
     });
   }
-})();
+});

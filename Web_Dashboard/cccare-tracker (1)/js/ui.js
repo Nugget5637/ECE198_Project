@@ -321,6 +321,11 @@
   }
 
   function frame(account) {
+    // The footers say data stays in this browser; with a backend, say where it goes instead.
+    if (CC.backend.enabled) {
+      document.querySelectorAll('.foot > p:first-child').forEach((el) =>
+        (el.textContent = `Data is saved on the server at ${CC.backend.url}.`));
+    }
     document.querySelectorAll('[data-who]').forEach((el) => {
       el.textContent = `${account.role} · ${account.username}`;
       // Profile link with the picture, just before the name.
@@ -339,9 +344,11 @@
     document.querySelectorAll('[data-reset]').forEach((el) =>
       el.addEventListener('click', (e) => {
         e.preventDefault();
-        if (confirm('Delete every session, name and workout saved in this browser and start again with sample data?')) {
-          CC.store.reset();
-          location.href = CC.auth.home(account);
+        const where = CC.backend.enabled ? 'on the server' : 'in this browser';
+        if (confirm(`Delete every session, name and workout saved ${where} and start again with sample data?`)) {
+          CC.store.reset().then(
+            () => (location.href = CC.auth.home(account)),
+            (err) => alert(`Couldn’t reset: ${err.message}`));
         }
       }));
   }

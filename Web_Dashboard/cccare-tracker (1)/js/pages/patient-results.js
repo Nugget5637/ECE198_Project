@@ -1,7 +1,7 @@
 /* One patient's results for one session: overall success, each exercise, what went wrong,
    and a Progress button with a line graph across sessions (overall or one exercise).
    Used by instructors and patients; a patient can only ever see their own results. */
-(function () {
+CC.start(function () {
   'use strict';
   const account = CC.auth.require();
   if (!account) return;
@@ -223,4 +223,4 @@
     wrong,
     progress,
     how);
-})();
+});
