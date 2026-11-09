@@ -12,6 +12,7 @@
     setGapSeconds: 15, // a pause at least this long ends a set, so the next rep starts the next set
     faultHoldSeconds: 10, // a form fault stays on screen this long after it was seen
     recentReps: 5, // the quality figure on each block is the average of the last five reps
+    errorReps: 2, // a form fault, or going over the planned reps, only counts once at least this many reps show it
   };
 
   // ---------- scoring ----------
@@ -19,6 +20,7 @@
   // extra counts reps done after the last planned set.
 
   const planned = (e) => e.sets * e.reps;
+  const setsDone = (e) => e.done.filter((d) => d >= e.reps).length;
   const repsDone = (e) => e.done.reduce((a, b) => a + b, 0) + (e.extra || 0);
 
   // Share of the planned reps done as planned, 0–1. Every rep short of a set and every rep
@@ -166,26 +168,43 @@
     // before the first rep. Unlike success it doesn't count reps not done yet: only sets
     // already finished (or passed) count toward adherence, so a good start shows green.
     performance() {
-      const values = [];
-      this.plan.forEach((e, i) => {
-        const started = e.qualities.length > 0;
-        if (!started && i >= this.ex) return; // not reached yet
-        if (!started) {
-          values.push(0); // passed without doing any of it
-          return;
-        }
-        let off = e.extra;
-        let count = 0;
-        e.done.forEach((d, k) => {
-          const inProgress = i === this.ex && k === this.set && d < e.reps;
-          if (inProgress || (d === 0 && i >= this.ex)) return;
-          off += Math.abs(d - e.reps);
-          count += 1;
-        });
-        const adh = count ? clamp(1 - off / (count * e.reps), 0, 1) : 1;
-        values.push(adh * mean(e.qualities));
-      });
+      const values = this.plan.map((_, i) => this.exercisePerformance(i)).filter((v) => v != null);
       return values.length ? Math.round(mean(values)) : null;
+    }
+
+    // The same for one exercise, or null if it hasn't been reached.
+    exercisePerformance(i) {
+      const e = this.plan[i];
+      const started = e.qualities.length > 0;
+      if (!started) return i >= this.ex ? null : 0; // not reached yet, or passed without doing any
+      let off = e.extra;
+      let count = 0;
+      e.done.forEach((d, k) => {
+        const inProgress = i === this.ex && k === this.set && d < e.reps;
+        if (inProgress || (d === 0 && i >= this.ex)) return;
+        off += Math.abs(d - e.reps);
+        count += 1;
+      });
+      const adh = count ? clamp(1 - off / (count * e.reps), 0, 1) : 1;
+      return Math.round(adh * mean(e.qualities));
+    }
+
+    // The current exercise for the big wheel: which set it's on and the reps in that set.
+    currentSet() {
+      const e = this.current();
+      const r = this.exerciseResult(e);
+      const extra = this.set >= e.sets;
+      return {
+        exercise: e.exercise,
+        sets: e.sets,
+        reps: e.reps,
+        set: Math.min(this.set, e.sets - 1) + 1,
+        inSet: extra ? e.done[e.sets - 1] : e.done[this.set],
+        extra: e.extra,
+        setsDone: setsDone(r),
+        success: r.success,
+        color: this.exercisePerformance(this.ex),
+      };
     }
 
     // Short state for the corner of the block.
@@ -221,20 +240,21 @@
       if (this.exertion != null && this.exertion >= LIMITS.exertionHigh) {
         list.push({ message: `Very hard effort, ${fmtExertion(this.exertion)} of 10`, cue: 'Slow down or take a rest.' });
       }
-      if (this.set < e.sets && e.done[this.set] > e.reps) {
+      if (this.set < e.sets && e.done[this.set] - e.reps >= LIMITS.errorReps) {
         const over = e.done[this.set] - e.reps;
         list.push({
           message: `${plural(over, 'rep')} over in set ${this.set + 1} (${e.done[this.set]} of ${e.reps})`,
           cue: 'That’s the end of this set. Stop and rest.',
         });
-      } else if (this.set >= e.sets && e.extra > 0) {
+      } else if (this.set >= e.sets && e.extra >= LIMITS.errorReps) {
         list.push({
           message: `${plural(e.extra, 'rep')} past the last set`,
           cue: finished ? 'That’s the whole workout. Time to stop and rest.' : 'This exercise is finished. Rest, then move on.',
         });
       }
       if (this.seconds(this.faultsAt, now) <= LIMITS.faultHoldSeconds) {
-        for (const code of this.currentFaults) {
+        // A fault is only shown once it has been seen on at least errorReps reps of this exercise.
+        for (const code of this.currentFaults.filter((c) => (e.faults[c] || 0) >= LIMITS.errorReps)) {
           const f = CC.fault(e.exercise, code);
           list.push({ message: f.message, cue: f.cue });
         }
@@ -276,6 +296,9 @@
         resting: this.restLeft(now) > 0,
         repsDone: this.reps,
         repsPlanned: this.plan.reduce((n, e) => n + planned(e), 0),
+        setsDone: this.plan.reduce((n, e) => n + setsDone(e), 0),
+        setsPlanned: this.plan.reduce((n, e) => n + e.sets, 0),
+        now: this.currentSet(),
         quality: this.recent.length ? Math.round(mean(this.recent)) : null,
         exertion: this.exertion,
         head: this.head(now),
@@ -284,7 +307,7 @@
           const r = this.exerciseResult(e);
           return {
             exercise: e.exercise, sets: e.sets, reps: e.reps,
-            done: repsDone(r), planned: planned(r), success: r.success,
+            done: repsDone(r), planned: planned(r), success: r.success, setsDone: setsDone(r),
             current: !finished && i === this.ex,
           };
         }),
@@ -292,16 +315,46 @@
       };
     }
 
+    // Where this person was when the session ended, or null if they had finished.
+    stoppedAt() {
+      if (this.complete()) return null;
+      const e = this.current();
+      return {
+        exercise: e.exercise,
+        exerciseNumber: this.ex + 1,
+        exercises: this.plan.length,
+        set: Math.min(this.set, e.sets - 1) + 1,
+        sets: e.sets,
+        inSet: this.set < e.sets ? e.done[this.set] : e.done[e.sets - 1],
+        reps: e.reps,
+        resting: this.reps > 0 && this.setFinished(), // between sets: that set was finished
+      };
+    }
+
+    // The saved result. When the session ended before this person finished, only what they
+    // reached counts: the exercises up to the current one, and its sets up to the current
+    // set. Exercises they never got to aren't counted against them.
     result() {
-      const exercises = this.plan.map((e) => this.exerciseResult(e));
-      const all = this.plan.flatMap((e) => e.qualities);
+      const stop = this.stoppedAt();
+      let plan = this.plan;
+      if (stop) {
+        plan = this.plan.slice(0, this.ex + 1).map((e, i) => {
+          if (i < this.ex) return e;
+          const keep = Math.min(e.sets, this.set + 1);
+          return Object.assign({}, e, { sets: keep, done: e.done.slice(0, keep) });
+        });
+      }
+      const exercises = plan.map((e) => this.exerciseResult(e));
+      const all = plan.flatMap((e) => e.qualities);
       return {
         id: this.id,
         name: this.name,
+        stoppedAt: stop,
+        exercisesPlanned: this.plan.length,
         exercises,
         repsDone: this.reps,
         repsPlanned: exercises.reduce((n, e) => n + planned(e), 0),
-        setsDone: exercises.reduce((n, e) => n + e.done.filter((d) => d >= e.reps).length, 0),
+        setsDone: exercises.reduce((n, e) => n + setsDone(e), 0),
         setsPlanned: exercises.reduce((n, e) => n + e.sets, 0),
         quality: all.length ? Math.round(mean(all)) : null,
         exertionAvg: this.exertionCount ? round1(this.exertionSum / this.exertionCount) : null,
@@ -312,6 +365,6 @@
   }
 
   CC.LIMITS = LIMITS;
-  CC.score = { planned, repsDone, adherence, exerciseSuccess, workoutSuccess, colorScore };
+  CC.score = { planned, repsDone, setsDone, adherence, exerciseSuccess, workoutSuccess, colorScore };
   CC.Tracker = Tracker;
 })();

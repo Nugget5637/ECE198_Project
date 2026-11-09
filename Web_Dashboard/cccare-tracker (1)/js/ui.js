@@ -93,16 +93,23 @@
       [0, 25, 50, 75, 100].map((p) => h('i', { style: `background:${percentColor(p)}` })));
   }
 
-  // A participant block: number, name, success wheel, live numbers, one row per exercise
-  // and, along the bottom, what is going wrong. audience 'patient' adds a cue to each issue.
+  // A participant block: number, name, two wheels, live numbers, one row per exercise and,
+  // along the bottom, what is going wrong. audience 'patient' adds a cue to each issue.
+  // The big wheel is the current exercise: it fills to that exercise's success and shows the
+  // set it's on and the reps done in that set. The small wheel beside it is the whole session.
   // update() takes a snapshot from Tracker.snapshot().
   function block(slot, opts) {
     opts = opts || {};
     const large = opts.size === 'large';
     const patient = opts.audience === 'patient';
-    const wheel = ring(large ? 260 : 112, large ? 18 : 9);
-    const pct = h('span', { class: 'wheel-pct' }, '0%');
-    const total = h('span', { class: 'wheel-reps' }, '0 reps');
+    const exWheel = ring(large ? 240 : 104, large ? 17 : 9);
+    const sessionWheel = ring(large ? 110 : 52, large ? 9 : 5);
+    const exPct = h('span', { class: 'wheel-pct' }, '0%');
+    const setText = h('span', { class: 'wheel-set' }, '');
+    const repText = h('span', { class: 'wheel-reps' }, '');
+    const exName = h('p', { class: 'wheel-ex-name' }, '');
+    const sessionPct = h('span', { class: 'wheel-pct' }, '0%');
+    const sessionSets = h('span', { class: 'wheel-side-sets' }, '');
     const quality = h('dd', null, '—');
     const exertion = h('dd', null, '—');
     const state = h('span', { class: 'block-state' }, 'starting');
@@ -114,12 +121,31 @@
     const el = h('article', { class: 'block' + (large ? ' block-large' : ''), id: 'block-' + slot.id, 'aria-label': CC.displayName(slot) },
       h('div', { class: 'block-head' }, h('span', { class: 'block-n' }, pad2(CC.slotNumber(slot.id))), state),
       nameEl,
-      h('div', { class: 'wheel' }, wheel.el, h('div', { class: 'wheel-text' }, pct, total)),
+      h('div', { class: 'wheels' },
+        h('div', { class: 'wheel wheel-ex', title: 'This exercise' },
+          exWheel.el, h('div', { class: 'wheel-text' }, exPct, setText, repText)),
+        h('div', { class: 'wheel-side' },
+          h('div', { class: 'wheel wheel-session', title: 'Whole session' },
+            sessionWheel.el, h('div', { class: 'wheel-text' }, sessionPct)),
+          h('span', { class: 'wheel-side-label' }, 'session'),
+          sessionSets)),
+      exName,
       h('dl', { class: 'block-stats' },
         h('div', null, h('dt', null, 'quality'), quality),
         h('div', null, h('dt', null, 'exertion'), exertion)),
       exList,
       issues);
+
+    const unit = (code) => (CC.timed(code) ? 's' : ' reps');
+
+    // The current exercise: its name, the set it's on and the reps done in that set.
+    function renderCurrent(now) {
+      exWheel.set(now.success, now.color);
+      exPct.textContent = now.success + '%';
+      exName.textContent = CC.exerciseName(now.exercise);
+      setText.textContent = `set ${now.set} of ${now.sets}`;
+      repText.textContent = `${now.inSet}/${now.reps}${unit(now.exercise)}` + (now.extra ? ` +${now.extra}` : '');
+    }
 
     let exKey = '';
     let rows = [];
@@ -142,7 +168,7 @@
         exList.replaceChildren(...rows.map((r) => r.li));
       }
       list.forEach((e, i) => {
-        rows[i].count.textContent = `${e.done}/${e.planned}`;
+        rows[i].count.textContent = `${e.setsDone || 0}/${e.sets} sets`;
         rows[i].bar.set(e.success);
         rows[i].li.classList.toggle('current', !!e.current);
       });
@@ -169,17 +195,21 @@
     }
 
     // Before the session starts: the plan with nothing done yet.
+    const first = slot.workout[0];
     renderExercises(slot.workout.map((w, i) => ({
-      exercise: w.exercise, sets: w.sets, reps: w.reps, done: 0, planned: w.sets * w.reps, success: 0, current: i === 0,
+      exercise: w.exercise, sets: w.sets, reps: w.reps, setsDone: 0, success: 0, current: i === 0,
     })));
-    total.textContent = `0/${slot.workout.reduce((n, w) => n + w.sets * w.reps, 0)} reps`;
+    renderCurrent({ exercise: first.exercise, sets: first.sets, reps: first.reps, set: 1, inSet: 0, extra: 0, success: 0, color: null });
+    sessionWheel.set(0, null);
+    sessionSets.textContent = `0/${slot.workout.reduce((n, w) => n + w.sets, 0)} sets`;
 
     return {
       el,
       update(snap) {
-        wheel.set(snap.success, snap.color === undefined ? null : snap.color);
-        pct.textContent = snap.success + '%';
-        total.textContent = `${snap.repsDone}/${snap.repsPlanned} reps`;
+        sessionWheel.set(snap.success, snap.color === undefined ? null : snap.color);
+        sessionPct.textContent = snap.success + '%';
+        sessionSets.textContent = `${snap.setsDone || 0}/${snap.setsPlanned} sets`;
+        if (snap.now) renderCurrent(snap.now);
         quality.textContent = snap.quality == null ? '—' : snap.quality + '%';
         exertion.textContent = snap.exertion == null ? '—' : fmtExertion(snap.exertion) + '/10';
         state.textContent = snap.head;
@@ -197,11 +227,13 @@
     };
   }
 
-  // Faults across all exercises of a saved result, most frequent first.
+  // Faults across all exercises of a saved result, most frequent first. A fault seen on
+  // fewer than LIMITS.errorReps reps isn't counted as an error.
   function faultList(result) {
     const list = [];
     for (const e of result.exercises) {
       for (const [code, count] of Object.entries(e.faults || {})) {
+        if (count < CC.LIMITS.errorReps) continue;
         list.push(Object.assign({ count, exercise: e.exercise, of: CC.score.repsDone(e) }, CC.fault(e.exercise, code)));
       }
     }
@@ -222,11 +254,11 @@
           items.push({ message: `${name} set ${k + 1} not done`, detail: `0 of ${e.reps} reps`, cue: 'Try to finish every set, resting between them if you need to.' });
         } else if (d < e.reps) {
           items.push({ message: `${name} set ${k + 1} stopped ${plural(e.reps - d, 'rep')} short`, detail: `${d} of ${e.reps} reps`, cue: 'Rest for a moment if you need to, then finish the set.' });
-        } else if (d > e.reps) {
+        } else if (d - e.reps >= CC.LIMITS.errorReps) {
           items.push({ message: `${name} set ${k + 1} went ${plural(d - e.reps, 'rep')} over`, detail: `${d} of ${e.reps} reps`, cue: 'Stop when you reach the reps for the set.' });
         }
       });
-      if (e.extra) {
+      if (e.extra >= CC.LIMITS.errorReps) {
         items.push({ message: `${name}: ${plural(e.extra, 'rep')} past the last set`, detail: `${e.sets} ${e.sets === 1 ? 'set' : 'sets'} planned`, cue: 'Stopping when the sets are done protects you from overdoing it.' });
       }
     }
@@ -241,6 +273,14 @@
       });
     }
     return items;
+  }
+
+  // Where someone was when a session ended early: "squat, set 2 of 3 (6 of 12 reps),
+  // exercise 2 of 4".
+  function stoppedText(stop) {
+    const unit = CC.timed(stop.exercise) ? 'seconds' : 'reps';
+    return `${stop.resting ? 'rest after ' : ''}${CC.exerciseName(stop.exercise).toLowerCase()}, set ${stop.set} of ${stop.sets} ` +
+      `(${stop.inSet} of ${stop.reps} ${unit}), exercise ${stop.exerciseNumber} of ${stop.exercises}`;
   }
 
   // Two-step button for things that can't be undone: the first press arms it, a second
@@ -307,7 +347,7 @@
   }
 
   CC.ui = {
-    percentColor, ring, miniRing, bar, swatches, statScore, statBox, avatar,
+    percentColor, ring, miniRing, bar, swatches, statScore, statBox, avatar, stoppedText,
     block, faultList, whatWentWrong, confirmButton, frame,
   };
 })();

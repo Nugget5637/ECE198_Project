@@ -375,11 +375,15 @@
       clearInterval(timer);
       feed.stop();
       const endedAt = Date.now();
+      const participants = [...trackers.values()].map((t) => t.result());
       CC.sessions.add({
         id: sessionId,
         startedAt: new Date(startedAt).toISOString(),
         endedAt: new Date(endedAt).toISOString(),
-        participants: [...trackers.values()].map((t) => t.result()),
+        // Ended before everyone finished. Each unfinished result records where it stopped.
+        endedEarly: participants.some((p) => p.stoppedAt),
+        elapsedMs: sessionNow() - startedAt,
+        participants,
       });
       // Tells patient pages the results are saved, so they can open them.
       CC.live.write({ state: 'ended', id: sessionId, updatedAt: endedAt });
