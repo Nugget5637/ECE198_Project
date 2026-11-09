@@ -120,7 +120,9 @@
       emit({ type: 'exertion', pid: p.id, value: half(p.exertion) });
 
       if (p.inSet < p.stopAt) {
-        let gap = p.tempo * (0.85 + rnd() * 0.3);
+        // Cardio and held exercises have their own pace; others go at the person's tempo.
+        const tempo = CC.EXERCISES[w.exercise].tempo || p.tempo;
+        let gap = tempo * (0.85 + rnd() * 0.3);
         if (rnd() < 0.04) gap += 2 + rnd() * 5; // a short breather, shorter than a rest
         p.nextAt = now + (gap * 1000) / speed;
         return;

@@ -78,6 +78,20 @@ exercise success = adherence × average quality
 
 On the patient's screen each message also carries a short cue, such as "Keep your knees in line with your toes."
 
+**Exercises.** The library has 22 exercises in seven groups:
+
+| Group | Exercises |
+| --- | --- |
+| Legs | sit-to-stand, mini squat, heel raise, squat, lunge, Romanian deadlift, glute bridge |
+| Chest | wall push-up, push-up |
+| Back | bent-over row, superman |
+| Arms | bicep curl, overhead tricep extension |
+| Shoulders | front arm raise, shoulder press |
+| Core | plank, crunch, bird dog |
+| Cardio | jumping jacks, high knees, mountain climbers, jump squat |
+
+Each exercise added from the library starts with its own usual sets and reps (for example squat 3×12, jumping jacks 3×30). The plank is held for time, so its "reps per set" are seconds, shown as `3×30s`. The camera pipeline sends one `rep` event per second held.
+
 The thresholds are in `LIMITS` in `js/score.js`. The exercises, their faults and the patient cues are in `js/exercises.js`; the sample starting workouts are `CC.WORKOUTS` in the same file.
 
 ## How the patient screen follows the instructor
@@ -156,7 +170,7 @@ patient-results.html     one patient's results and progress graphs
 profile.html             picture, birthday and biography
 css/style.css            all styling
 img/exercises/*.gif      exercise animations (muscles worked in red)
-tools/make_exercise_gifs.py  renders those animations in 3D (needs numpy and Pillow; about 20 minutes on 8 cores)
+tools/make_exercise_gifs.py  renders those animations in 3D (needs numpy and Pillow; about 3 minutes per exercise on 8 cores; --preview for quick stills)
 js/util.js               helpers (dates, durations, random numbers, safe element building)
 js/exercises.js          exercises, fault messages, cues, sample workouts
 js/score.js              workout scoring, thresholds, live tracker

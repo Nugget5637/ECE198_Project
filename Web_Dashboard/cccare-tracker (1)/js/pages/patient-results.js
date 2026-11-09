@@ -83,7 +83,7 @@
           h('h3', null, CC.exerciseName(e.exercise)),
           h('span', { class: 'cell-success' }, CC.ui.miniRing(e.success), e.success + '%')),
         h('dl', { class: 'ex-result-stats' },
-          h('div', null, h('dt', null, 'reps'), h('dd', null, statBox(statScore.reps(score.repsDone(e), score.planned(e)), 'Reps'), `${score.repsDone(e)}/${score.planned(e)}`)),
+          h('div', null, h('dt', null, CC.timed(e.exercise) ? 'seconds' : 'reps'), h('dd', null, statBox(statScore.reps(score.repsDone(e), score.planned(e)), 'Reps'), `${score.repsDone(e)}/${score.planned(e)}`)),
           h('div', null, h('dt', null, 'form'), h('dd', null, statBox(statScore.quality(e.quality), 'Form'), e.quality == null ? '—' : e.quality + '%')),
           h('div', null, h('dt', null, 'each set'), h('dd', null, e.done.join(' · ') + (e.extra ? ` +${e.extra}` : '')))));
     })));
@@ -122,7 +122,7 @@
       }
       const e = r.exercises.find((x) => x.exercise === code);
       if (!e) return null;
-      return Object.assign(base, { value: e.success, note: `${e.sets} × ${e.reps} · ${score.repsDone(e)}/${score.planned(e)} reps` });
+      return Object.assign(base, { value: e.success, note: `${CC.planText(e)} · ${score.repsDone(e)}/${score.planned(e)}${CC.timed(e.exercise) ? 's' : ' reps'}` });
     }).filter(Boolean);
   }
 

@@ -63,7 +63,7 @@
         label.textContent = `${plural(workout.length, 'exercise')}: ${CC.exerciseName(workout[0].exercise)}${workout.length > 1 ? ', …' : ''}`;
         fill(list, workout.map((w) => h('li', null,
           h('span', null, CC.exerciseName(w.exercise)),
-          h('span', { class: 'mono muted' }, `${w.sets}×${w.reps} · rest ${CC.restOf(w)}s`))));
+          h('span', { class: 'mono muted' }, `${CC.planText(w)} · rest ${CC.restOf(w)}s`))));
       },
     };
   }
@@ -108,7 +108,7 @@
         card.addEventListener('click', () => {
           if (onlyOne || full) return;
           if (added) slot.workout = slot.workout.filter((w) => w.exercise !== code);
-          else slot.workout.push({ exercise: code, sets: 2, reps: 10, rest: LIM.rest });
+          else slot.workout.push(Object.assign({ exercise: code, rest: LIM.rest }, CC.defaultsFor(code)));
           onChange({ focus: 'card:' + code });
         });
         return card;
@@ -155,7 +155,8 @@
           w.sets = v;
           refresh();
         });
-        const reps = numberInput(w.reps, 1, LIM.reps, `Reps per set, ${label}`, (v) => {
+        const timed = CC.timed(w.exercise);
+        const reps = numberInput(w.reps, 1, LIM.reps, `${timed ? 'Seconds' : 'Reps'} per set, ${label}`, (v) => {
           w.reps = v;
           refresh();
         });
@@ -175,7 +176,7 @@
         return h('div', { class: 'wk-line' },
           h('span', { class: 'wk-ex' },
             ex && ex.gif ? h('img', { class: 'wk-thumb', src: ex.gif, alt: '', width: 36, height: 36 }) : null,
-            h('span', null, CC.exerciseName(w.exercise))),
+            h('span', null, CC.exerciseName(w.exercise), timed ? h('small', { class: 'muted' }, ' (seconds)') : null)),
           sets, reps, rest, remove);
       });
 
@@ -196,6 +197,8 @@
         h('h3', null, 'Workout'),
         h('div', { class: 'wk-labels mono muted', 'aria-hidden': 'true' },
           h('span', null, 'exercise'), h('span', null, 'sets'), h('span', null, 'reps per set'), h('span', null, 'rest (sec)'), h('span')),
+        slot.workout.some((w) => CC.timed(w.exercise))
+          ? h('p', { class: 'mono muted wk-note' }, 'For held exercises such as the plank, "reps per set" is the seconds to hold.') : null,
         lines,
         library(slot, n, libState, (o) => {
           refresh();
