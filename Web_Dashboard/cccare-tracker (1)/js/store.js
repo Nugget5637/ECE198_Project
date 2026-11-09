@@ -16,6 +16,8 @@
     version: 'cccare.version',
     lastCount: 'cccare.lastCount',
     live: 'cccare.live',
+    accounts: 'cccare.accounts',
+    profiles: 'cccare.profiles',
   };
 
   // Sample accounts from the brief. Hard-coded passwords are only acceptable in a
@@ -51,17 +53,63 @@
 
   // ---------- sign-in ----------
 
+  // Accounts made on the sign-up page, kept in localStorage alongside the sample ones.
+  // Like the sample accounts, the password is stored as typed: fine for a prototype only.
+  function savedAccounts() {
+    const list = read(localStorage, KEY.accounts, []);
+    return Array.isArray(list)
+      ? list.filter((a) => a && typeof a.username === 'string' && typeof a.password === 'string' &&
+        (a.role === 'instructor' || a.role === 'patient'))
+      : [];
+  }
+  const allAccounts = () => ACCOUNTS.concat(savedAccounts());
+  const findAccount = (username) => {
+    const u = String(username || '').trim().toLowerCase();
+    return allAccounts().find((a) => a.username.toLowerCase() === u) || null;
+  };
+
+  function startSession(account) {
+    const signedIn = { username: account.username, role: account.role, participantId: account.participantId || null };
+    write(sessionStorage, KEY.auth, signedIn);
+    return signedIn;
+  }
+
+  const USERNAME = /^[A-Za-z0-9._-]{3,24}$/;
+
   const auth = {
-    // Returns { account } on success, { wrongRole } when the details belong to the other
-    // kind of account, or null.
-    signIn(username, password, role) {
-      const u = String(username || '').trim().toLowerCase();
-      const account = ACCOUNTS.find((a) => a.username.toLowerCase() === u && a.password === password);
-      if (!account) return null;
-      if (role && account.role !== role) return { wrongRole: account.role };
-      const signedIn = { username: account.username, role: account.role, participantId: account.participantId || null };
-      write(sessionStorage, KEY.auth, signedIn);
-      return { account: signedIn };
+    // Returns { account } on success, or null. The account decides whether this is an
+    // instructor or a patient.
+    signIn(username, password) {
+      const account = findAccount(username);
+      if (!account || account.password !== password) return null;
+      return { account: startSession(account) };
+    },
+    // Makes a new account and signs in with it. Returns { account } or { error }.
+    // A patient account is linked to the first block number no other account uses.
+    signUp(username, password, role) {
+      const name = String(username || '').trim();
+      if (!USERNAME.test(name)) return { error: 'Usernames are 3 to 24 letters, numbers, dots, dashes or underscores.' };
+      if (findAccount(name)) return { error: 'That username is taken. Choose another.' };
+      if (String(password || '').length < 4) return { error: 'Use a password of at least 4 characters.' };
+      if (role !== 'instructor' && role !== 'patient') return { error: 'Choose instructor or patient.' };
+      const account = { username: name, password, role };
+      if (role === 'patient') {
+        const used = new Set(allAccounts().map((a) => a.participantId).filter(Boolean));
+        let n = 1;
+        while (n <= MAX && used.has(pid(n))) n++;
+        if (n > MAX) return { error: `All ${MAX} patient places are taken.` };
+        account.participantId = pid(n);
+        // Shows the new patient's username on the instructor's roster until a name is set.
+        const slot = roster.get(account.participantId);
+        if (slot && !slot.name) {
+          slot.name = name;
+          roster.save([slot]);
+        }
+      }
+      if (!write(localStorage, KEY.accounts, savedAccounts().concat([account]))) {
+        return { error: 'Could not save the account in this browser.' };
+      }
+      return { account: startSession(account) };
     },
     current() {
       const a = read(sessionStorage, KEY.auth, null);
@@ -106,7 +154,12 @@
     const out = list
       .filter((w) => w && typeof w === 'object' && CC.EXERCISES[w.exercise])
       .slice(0, L.exercises)
-      .map((w) => ({ exercise: w.exercise, sets: toInt(w.sets, 1, L.sets, 2), reps: toInt(w.reps, 1, L.reps, 10) }));
+      .map((w) => ({
+        exercise: w.exercise,
+        sets: toInt(w.sets, 1, L.sets, 2),
+        reps: toInt(w.reps, 1, L.reps, 10),
+        rest: toInt(w.rest, L.restMin, L.restMax, L.rest),
+      }));
     return out.length ? out : fallback;
   }
 
@@ -335,6 +388,36 @@
     },
   };
 
+  // ---------- profiles ----------
+  // One per username: { bio, birthday: 'YYYY-MM-DD' or '', photo: data URL or '' }.
+  // Photos are shrunk before saving (see profile.js) so they fit in localStorage.
+
+  const BIO_MAX = 500;
+  const PHOTO_MAX = 200000; // characters of data URL
+  const profileKey = (username) => String(username || '').trim().toLowerCase();
+
+  function cleanProfile(p) {
+    p = p && typeof p === 'object' ? p : {};
+    const birthday = /^\d{4}-\d{2}-\d{2}$/.test(p.birthday || '') ? p.birthday : '';
+    const photo = typeof p.photo === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(p.photo) && p.photo.length <= PHOTO_MAX
+      ? p.photo : '';
+    return { bio: String(p.bio || '').slice(0, BIO_MAX), birthday, photo };
+  }
+
+  const profiles = {
+    BIO_MAX,
+    get(username) {
+      const all = read(localStorage, KEY.profiles, {});
+      return cleanProfile(all && typeof all === 'object' ? all[profileKey(username)] : null);
+    },
+    save(username, profile) {
+      const all = read(localStorage, KEY.profiles, {});
+      const next = all && typeof all === 'object' && !Array.isArray(all) ? all : {};
+      next[profileKey(username)] = cleanProfile(profile);
+      return write(localStorage, KEY.profiles, next);
+    },
+  };
+
   // ---------- misc ----------
 
   const store = {
@@ -368,4 +451,5 @@
   CC.sessions = sessions;
   CC.live = live;
   CC.store = store;
+  CC.profiles = profiles;
 })();

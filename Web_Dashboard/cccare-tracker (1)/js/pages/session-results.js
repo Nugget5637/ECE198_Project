@@ -32,15 +32,20 @@
     return [top.message, ' ', h('span', { class: 'mono muted' }, `×${top.count}`)];
   }
 
+  const { statScore, statBox } = CC.ui;
+  // A number with a coloured box in front of it, red (poor) to green (good).
+  const stat = (score, label, text) => h('td', null, h('span', { class: 'cell-stat mono' }, statBox(score, label), text));
+
   const rows = people.map((p) => {
     const tr = h('tr', null,
       h('td', { class: 'mono' }, pad2(CC.slotNumber(p.id))),
       h('td', null, h('a', { href: link(p) }, CC.displayName(p))),
-      h('td', null, h('span', { class: 'cell-success' }, CC.ui.miniRing(p.success), p.success + '%')),
-      h('td', { class: 'mono' }, `${p.repsDone}/${p.repsPlanned}`),
-      h('td', { class: 'mono' }, `${p.setsDone}/${p.setsPlanned}`),
-      h('td', { class: 'mono' }, p.quality == null ? '—' : p.quality + '%'),
-      h('td', { class: 'mono' }, p.exertionAvg == null ? '—' : `${fmtExertion(p.exertionAvg)} / ${fmtExertion(p.exertionPeak)}`),
+      h('td', null, h('span', { class: 'cell-success' }, CC.ui.miniRing(p.success, CC.score.colorScore(p.exercises)), p.success + '%')),
+      stat(statScore.reps(p.repsDone, p.repsPlanned), 'Reps', `${p.repsDone}/${p.repsPlanned}`),
+      stat(statScore.sets(p.setsDone, p.setsPlanned), 'Sets finished', `${p.setsDone}/${p.setsPlanned}`),
+      stat(statScore.quality(p.quality), 'Quality', p.quality == null ? '—' : p.quality + '%'),
+      stat(statScore.exertion(p.exertionPeak), 'Exertion',
+        p.exertionAvg == null ? '—' : `${fmtExertion(p.exertionAvg)} / ${fmtExertion(p.exertionPeak)}`),
       h('td', null, mainIssue(p)));
     tr.title = CC.describeWorkout(p.exercises);
     tr.addEventListener('click', (e) => {
@@ -67,6 +72,7 @@
           ['No.', 'Name', 'Success', 'Reps', 'Sets finished', 'Quality', 'Exertion avg / peak', 'Most common issue']
             .map((t) => h('th', { scope: 'col' }, t)))),
         h('tbody', null, rows))),
+    h('p', { class: 'legend mono stat-legend' }, 'boxes: poor ', CC.ui.swatches(), ' good. Exertion is judged by its peak: green up to 5, red at 9 or more.'),
     h('div', { class: 'results-actions' },
       h('a', { class: 'btn', href: 'instructor.html' }, 'New session')));
 })();
