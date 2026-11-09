@@ -63,7 +63,7 @@ exercise success = adherence × average quality
 
 **Workout success** combines the exercises, weighted by how many reps each one plans. For example, 2 sets of 10 done as 10 and 10 at 85% quality scores 85%. Done as 10 and 5, or as 10 and 15, at 85% quality it scores 64%. Stopping a set short and going past it cost the same, because both came up in the brief. To change the rule, edit the scoring functions in `js/score.js`.
 
-**The wheel** fills clockwise from 12 o'clock with success. Its colour, from red through orange and yellow to green, is the plain average of how well each exercise is going, so it doesn't just track progress. During a session only exercises already reached count, and only finished sets count toward adherence, so a good start shows green while the wheel is still nearly empty. On results pages it is the average of the exercises' success. The percentage is also printed in the middle for anyone who can't tell the colours apart. Each exercise row has a small bar coloured by its own success.
+**The wheels.** Each live block has two. The big wheel is the current exercise: it fills to that exercise's success and shows the set it's on ("set 2 of 3") and the reps done in that set ("6/10 reps"). The small wheel beside it is the whole session, with the sets finished so far ("2/6 sets"). Each exercise row shows its sets finished. A wheel's colour, red through orange and yellow to green, is how well the exercise (or, for the session wheel, the average of the exercises) is going, so it doesn't just track progress: only finished sets count toward adherence, so a good start shows green while the wheel is still nearly empty. On results pages the wheel's colour is the average of the exercises' success. The percentage is always printed in the middle for anyone who can't tell the colours apart.
 
 **Session results** put a coloured box next to each person's reps, sets finished, quality and exertion, red (poor) to green (good). Reps lose points for going over as well as stopping short; exertion is judged by its peak, green up to 5 of 10 and red at 9 or more. The rules are `statScore` in `js/ui.js`.
 
@@ -74,6 +74,8 @@ exercise success = adherence × average quality
 - Very hard effort, 8 or more out of 10
 - Reps over the planned count for the current set, or past the last set
 - A form fault reported by the camera, such as "Knees caving inward on the way up"
+
+A form fault, or going over the planned reps, only counts as an error once at least 2 reps show it (`errorReps` in `LIMITS`). This applies live and in the saved results.
 - No reps for a while (the time ticks over into minutes, hours and days)
 
 On the patient's screen each message also carries a short cue, such as "Keep your knees in line with your toes."
@@ -93,6 +95,10 @@ On the patient's screen each message also carries a short cue, such as "Keep you
 Each exercise added from the library starts with its own usual sets and reps (for example squat 3×12, jumping jacks 3×30). The plank is held for time, so its "reps per set" are seconds, shown as `3×30s`. The camera pipeline sends one `rep` event per second held.
 
 The thresholds are in `LIMITS` in `js/score.js`. The exercises, their faults and the patient cues are in `js/exercises.js`; the sample starting workouts are `CC.WORKOUTS` in the same file.
+
+**Ending early.** If the instructor ends the session before someone has finished, their result only counts the exercises they reached, and the sets of the current exercise up to the one they were on; exercises they never got to aren't counted against them. The session results page then opens with an alert saying the session was ended early and where each unfinished person stopped (exercise, set and reps in that set). That patient's results page shows the same note.
+
+**Look.** Text is set in DM Sans (bundled in `css/fonts/`, SIL Open Font License). The moon button in the top right switches night mode; the choice is remembered in this browser. The GitHub button next to it opens the repository.
 
 ## How the patient screen follows the instructor
 
@@ -171,6 +177,7 @@ profile.html             picture, birthday and biography
 css/style.css            all styling
 img/exercises/*.gif      exercise animations (muscles worked in red)
 tools/make_exercise_gifs.py  renders those animations in 3D (needs numpy and Pillow; about 3 minutes per exercise on 8 cores; --preview for quick stills)
+js/theme.js              night mode and the GitHub button (loaded in each page's head)
 js/util.js               helpers (dates, durations, random numbers, safe element building)
 js/exercises.js          exercises, fault messages, cues, sample workouts
 js/score.js              workout scoring, thresholds, live tracker

@@ -55,7 +55,21 @@
     return tr;
   });
 
-  main.replaceChildren(
+  // Ended before everyone finished: say so first, and where each unfinished person stopped.
+  const stopped = people.filter((p) => p.stoppedAt);
+  const early = session.endedEarly && stopped.length ? h('section', { class: 'ended-early', role: 'alert' },
+    h('h2', null, 'This session was ended early'),
+    h('p', null,
+      `It ended at ${fmtTime(session.endedAt)}`,
+      session.elapsedMs ? `, ${fmtMinutes(session.elapsedMs)} in` : '',
+      `. ${stopped.length} of ${people.length} hadn’t finished. `,
+      'Their results only count the exercises and sets they reached.'),
+    h('ul', null, stopped.map((p) => h('li', null,
+      h('a', { href: link(p) }, `${pad2(CC.slotNumber(p.id))} ${CC.displayName(p)}`),
+      h('span', null, ` stopped at ${CC.ui.stoppedText(p.stoppedAt)}`))))) : null;
+
+  CC.util.fill(main,
+    early,
     h('div', { class: 'results-top' },
       h('div', null,
         h('h1', null, 'Results'),

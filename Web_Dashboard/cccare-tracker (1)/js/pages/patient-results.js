@@ -204,7 +204,14 @@
       'The overall score combines the exercises, weighted by how many reps each one plans. ',
       'For example, 2 sets of 10 done as 10 and 10 at 85% quality scores 85%. Done as 10 and 5, or as 10 and 15, at 85% quality it scores 64%.'));
 
-  main.replaceChildren(
+  const early = result.stoppedAt ? h('section', { class: 'ended-early', role: 'alert' },
+    h('h2', null, 'This session was ended early'),
+    h('p', null,
+      `It ended during ${CC.ui.stoppedText(result.stoppedAt)}. `,
+      'Only the exercises and sets reached are counted.')) : null;
+
+  fill(main,
+    early,
     crumbs,
     h('section', { class: 'result-head' },
       h('h1', null, name),
