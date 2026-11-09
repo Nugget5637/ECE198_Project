@@ -1,0 +1,160 @@
+# CCCARE exercise tracking
+
+A prototype website for sub-problem 2, exercise tracking and measurement. The instructor sees up to 30 participants at once. Each participant has a block showing their workout (several exercises, each with sets and reps), their movement quality and exertion, and what they are doing wrong. When the instructor ends the session, everyone gets a results page with a percentage success, a breakdown by exercise, and a Progress graph across earlier sessions.
+
+The site is plain HTML, CSS and JavaScript. There is no build step and no libraries, and it works offline.
+
+## Running it
+
+- **From your computer:** unzip the folder and open `index.html` in Chrome or Edge. This was tested in Chromium, which both are built on. Firefox reportedly keeps browser storage separate for each local file, so signing in may not carry over to the next page there. In Firefox, use a hosted copy or a local server instead.
+- **Local server:** run `python3 -m http.server 8000` in this folder and go to <http://localhost:8000>. This works in any browser.
+
+Because the patient screen follows the instructor's session through this browser's storage, see them both at once by opening `instructor.html` in one tab (signed in as the instructor) and `patient.html` in another (signed in as the patient), in the same browser.
+
+## Putting it online
+
+It is a static site, so any static host works. Two free options:
+
+**Netlify Drop (about a minute)**
+
+1. Go to <https://app.netlify.com/drop>.
+2. Drag `cccare-tracker.zip`, or the unzipped folder, onto the page.
+3. Sign up for a free account when asked. Without an account the site is deleted after about an hour.
+
+**GitHub Pages (a few minutes, stays up)**
+
+1. Create a new **public** repository at <https://github.com/new>, for example `cccare-tracker`. Free accounts need a public repository for Pages.
+2. On the new repository's page, choose **uploading an existing file**. Drag in everything *inside* the unzipped folder, not the folder itself, then commit.
+3. Open **Settings → Pages**. Under **Build and deployment**, set **Source** to **Deploy from a branch**, choose `main` and `/ (root)`, and save.
+4. After a minute or two the site is at `https://<your-username>.github.io/cccare-tracker/`.
+
+Sample accounts (the username is not case-sensitive, the password is):
+
+| Role | Username | Password |
+| --- | --- | --- |
+| Instructor | `InsU` | `InsP` |
+| Patient | `PatU` | `PatP` (linked to participant 01) |
+
+On the sign-in page, choose **Instructor** or **Patient** first, then enter that account's details. The details have to match the button you chose.
+
+## Pages
+
+| File | Who | What it does |
+| --- | --- | --- |
+| `index.html` | everyone | Sign in, as instructor or patient. |
+| `instructor.html` | instructor | Set up the class (1 to 30 participants, a name and a full workout for each), then the live dashboard. **Edit** on a row opens a workout editor; **Copy to all** applies one person's workout to everyone. |
+| `patient.html` | patient | One large block for the signed-in patient. It can't be started by the patient: it goes live on its own when the instructor starts the class, and opens the patient's results when the instructor ends it. |
+| `session-results.html` | instructor | Everyone's results for a session. A row opens that patient's results. |
+| `patient-results.html` | both | One patient's results: overall success, a row per exercise, what went wrong, and the **Progress** button. Patients can only open their own results. |
+
+A blank name shows as "Patient" plus the block number. **End session** asks for a second press within four seconds so it can't be ended by accident.
+
+## What the numbers mean
+
+A **workout** is a list of exercises, each done for a number of **sets** of a number of **reps** (for example, sit-to-stand, 2 sets of 10).
+
+**Exercise success**, 0 to 100%, is how closely the sets were done as planned, multiplied by the average movement quality of that exercise's reps:
+
+```
+adherence = 1 − (sum over sets of |reps done − reps planned| + reps past the last set) / total planned reps
+exercise success = adherence × average quality
+```
+
+**Workout success** combines the exercises, weighted by how many reps each one plans. For example, 2 sets of 10 done as 10 and 10 at 85% quality scores 85%. Done as 10 and 5, or as 10 and 15, at 85% quality it scores 64%. Stopping a set short and going past it cost the same, because both came up in the brief. To change the rule, edit the scoring functions in `js/score.js`.
+
+**The wheel** fills clockwise from 12 o'clock with success, and its colour follows that same percentage: red at 0%, through orange and yellow, to green at 100%. The percentage is also printed in the middle for anyone who can't tell the colours apart. Each exercise row has a small bar coloured the same way.
+
+**The strip along the bottom** turns black with a pulsing red outline when something needs attention, and shows the message only (no topic label):
+
+- Very hard effort, 8 or more out of 10
+- Reps over the planned count for the current set, or past the last set
+- A form fault reported by the camera, such as "Knees caving inward on the way up"
+- No reps for a while (the time ticks over into minutes, hours and days)
+
+On the patient's screen each message also carries a short cue, such as "Keep your knees in line with your toes."
+
+The thresholds are in `LIMITS` in `js/score.js`. The exercises, their faults and the patient cues are in `js/exercises.js`; the sample starting workouts are `CC.WORKOUTS` in the same file.
+
+## How the patient screen follows the instructor
+
+The patient can't start or stop a session. While a session runs, the instructor's page writes each participant's live block to this browser's storage twice a second. The patient page reads its own block from there, so it goes live when the instructor starts and opens the results when the instructor ends. This works for tabs in the **same browser on the same computer**. Across different devices it would need a small relay server (the same WebSocket server described below could carry it).
+
+## Connecting the camera, neural network and ESP32
+
+Without any setup, a simulator in the browser makes up the data. To use real data, run a WebSocket server on the machine running the neural network, then open:
+
+```
+instructor.html?feed=ws://192.168.1.20:8765
+```
+
+The address is remembered for that browser tab. Use `?feed=off` to go back to the simulator.
+
+The server sends JSON messages, one at a time or several in an array:
+
+```json
+{ "type": "rep", "pid": "P03", "quality": 82, "faults": ["knees_in"], "exercise": "sit_to_stand" }
+{ "type": "exertion", "pid": "P03", "value": 6 }
+{ "type": "faults", "pid": "P03", "faults": ["lean_forward"] }
+```
+
+- `pid` is the block number, written as `"P03"`, `"3"` or `3`.
+- `rep` is one finished repetition. `quality` is 0 to 100. `faults` lists the fault codes seen during that rep, or is empty. `exercise` is optional: when given, the rep is counted against that exercise in the workout; when left out, reps fill the workout in order, and a pause of about 15 seconds starts the next set.
+- `exertion` is on a 0 to 10 scale. It can come from a heart-rate sensor on the ESP32 or be estimated from movement.
+- `faults` on its own sends live form feedback between reps.
+- Fault codes are listed per exercise in `js/exercises.js`. An unknown code is shown as plain text.
+
+When a session starts, the dashboard sends `{"type":"session","state":"start","participants":["P01",…],"workouts":{…}}`, where `workouts` maps each station to its planned exercises, sets and reps. It sends `{"type":"session","state":"end"}` when the session ends. Invalid messages are ignored.
+
+A minimal test server in Python (`pip install websockets`). This is an untested sketch:
+
+```python
+import asyncio, json, random
+import websockets
+
+async def handler(ws):
+    hello = json.loads(await ws.recv())          # the "session start" message
+    stations = hello.get("participants", ["P01"])
+    while True:
+        await ws.send(json.dumps({"type": "rep", "pid": random.choice(stations),
+                                  "quality": random.randint(55, 98), "faults": []}))
+        await asyncio.sleep(1)
+
+async def main():
+    async with websockets.serve(handler, "0.0.0.0", 8765):
+        await asyncio.Future()
+
+asyncio.run(main())
+```
+
+If the site is served over `https://`, browsers block plain `ws://` connections, so use `wss://`. Opening the site from a file or from `http://localhost` avoids this.
+
+## Demo tips
+
+- Add `?speed=3` to `instructor.html` to make the simulator three times faster. The patient screen follows along at the same speed.
+- The progress graphs start with sample history: 14 Tuesday and Thursday classes before today, labelled "sample". Sessions you run are added after them.
+- **Reset sample data**, in the instructor footer, deletes saved sessions, names and workouts.
+
+## Limits of the prototype
+
+- Sign-in is checked in the browser against hard-coded passwords, and all data is kept in the browser's `localStorage`. This is fine for a demo but not for real patient data. A real deployment needs server-side sign-in and storage that meets Ontario's health privacy law (PHIPA).
+- The patient screen follows the instructor only within the same browser on one computer. Separate devices need a relay server.
+- Exertion and form scores are only as good as the pipeline that sends them. The website displays and scores what it receives.
+
+## Files
+
+```
+index.html               sign in (instructor / patient buttons)
+instructor.html          set-up, workout editor and live dashboard
+patient.html             patient's live block, driven by the instructor
+session-results.html     instructor: everyone's results
+patient-results.html     one patient's results and progress graphs
+css/style.css            all styling
+js/util.js               helpers (dates, durations, random numbers, safe element building)
+js/exercises.js          exercises, fault messages, cues, sample workouts
+js/score.js              workout scoring, thresholds, live tracker
+js/store.js              accounts, roster, saved sessions, sample history, live link
+js/feed.js               simulator and WebSocket feed
+js/ui.js                 wheel, bars, participant block, shared page parts
+js/chart.js              progress line graph
+js/pages/*.js            one script per page
+```
