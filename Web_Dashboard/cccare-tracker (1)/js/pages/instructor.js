@@ -103,7 +103,7 @@
         h('span', { class: 'ex-card-text' },
           h('span', { class: 'ex-card-name' }, ex.name),
           h('span', { class: 'ex-card-muscles' }, ex.muscles.join(' · '))),
-        h('span', { class: 'ex-card-state' }, added ? '✓ Added' : '+ Add'));
+        h('span', { class: 'ex-card-state' }, added ? 'Added' : '+ Add'));
         card.dataset.focus = 'card:' + code;
         card.addEventListener('click', () => {
           if (onlyOne || full) return;

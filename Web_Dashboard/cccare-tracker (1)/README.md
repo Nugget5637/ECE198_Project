@@ -156,7 +156,7 @@ patient-results.html     one patient's results and progress graphs
 profile.html             picture, birthday and biography
 css/style.css            all styling
 img/exercises/*.gif      exercise animations (muscles worked in red)
-tools/make_exercise_gifs.py  draws those animations (needs Pillow)
+tools/make_exercise_gifs.py  renders those animations in 3D (needs numpy and Pillow; about 20 minutes on 8 cores)
 js/util.js               helpers (dates, durations, random numbers, safe element building)
 js/exercises.js          exercises, fault messages, cues, sample workouts
 js/score.js              workout scoring, thresholds, live tracker
