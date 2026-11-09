@@ -2,7 +2,6 @@
 <html>
 <head>
   <title>Session Results</title>
-  <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <p><a href="index.html">Home</a></p>
@@ -41,7 +40,7 @@
       // The most recent session.
       var session = pastSessions[pastSessions.length - 1];
       var html = "<p>" + session.date + ". Length: " + formatTime(session.seconds) + "</p>";
-      html += "<table><tr><th>Name</th><th>Reps done</th><th>Average form quality</th>" +
+      html += "<table border="1"><tr><th>Name</th><th>Reps done</th><th>Average form quality</th>" +
               "<th>Highest exertion</th><th>Finished?</th><th>Score</th></tr>";
 
       for (var i = 0; i < session.people.length; i++) {
@@ -90,7 +89,7 @@
         document.getElementById("progress").innerHTML = "<p>No sessions yet.</p>";
         return;
       }
-      var html = "<table><tr><th>Session</th><th>Date</th><th>Score</th></tr>";
+      var html = "<table border="1"><tr><th>Session</th><th>Date</th><th>Score</th></tr>";
       for (var s = 0; s < pastSessions.length; s++) {
         for (var i = 0; i < pastSessions[s].people.length; i++) {
           var p = pastSessions[s].people[i];

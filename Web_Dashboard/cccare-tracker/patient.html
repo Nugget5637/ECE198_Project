@@ -2,7 +2,6 @@
 <html>
 <head>
   <title>My Workout</title>
-  <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <p><a href="index.html">Home</a></p>
@@ -88,7 +87,7 @@
 
       // The whole workout.
       html += "<h2>Today's workout</h2>";
-      html += "<table><tr><th>Exercise</th><th>Sets</th><th>Reps</th><th>Done?</th></tr>";
+      html += "<table border="1"><tr><th>Exercise</th><th>Sets</th><th>Reps</th><th>Done?</th></tr>";
       for (var i = 0; i < workout.length; i++) {
         var status;
         if (person.done || i < person.exerciseIndex) status = "<span class='good'>Yes</span>";
