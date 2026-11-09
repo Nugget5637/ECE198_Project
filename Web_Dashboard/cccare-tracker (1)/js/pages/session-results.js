@@ -57,16 +57,37 @@
 
   // Ended before everyone finished: say so first, and where each unfinished person stopped.
   const stopped = people.filter((p) => p.stoppedAt);
-  const early = session.endedEarly && stopped.length ? h('section', { class: 'ended-early', role: 'alert' },
-    h('h2', null, 'This session was ended early'),
-    h('p', null,
-      `It ended at ${fmtTime(session.endedAt)}`,
-      session.elapsedMs ? `, ${fmtMinutes(session.elapsedMs)} in` : '',
-      `. ${stopped.length} of ${people.length} hadn’t finished. `,
-      'Their results only count the exercises and sets they reached.'),
-    h('ul', null, stopped.map((p) => h('li', null,
-      h('a', { href: link(p) }, `${pad2(CC.slotNumber(p.id))} ${CC.displayName(p)}`),
-      h('span', null, ` stopped at ${CC.ui.stoppedText(p.stoppedAt)}`))))) : null;
+  let early = null;
+  if (session.endedEarly && stopped.length) {
+    // Just the heading and one-line summary; the arrow opens the list of where each person stopped.
+    const list = h('ul', { class: 'ended-early-list', id: 'ended-early-list', hidden: true },
+      stopped.map((p) => h('li', null,
+        h('a', { href: link(p) }, `${pad2(CC.slotNumber(p.id))} ${CC.displayName(p)}`),
+        h('span', null, ` stopped at ${CC.ui.stoppedText(p.stoppedAt)}`))));
+    const toggle = h('button', {
+      type: 'button', class: 'ended-early-toggle', 'aria-expanded': 'false', 'aria-controls': 'ended-early-list',
+      'aria-label': 'Show where each person stopped', title: 'Show where each person stopped',
+    }, h('span', { class: 'arrow', 'aria-hidden': 'true' }));
+    toggle.addEventListener('click', () => {
+      const open = list.hidden;
+      list.hidden = !open;
+      toggle.setAttribute('aria-expanded', String(open));
+      const label = open ? 'Hide where each person stopped' : 'Show where each person stopped';
+      toggle.setAttribute('aria-label', label);
+      toggle.title = label;
+    });
+    early = h('section', { class: 'ended-early', role: 'status' },
+      h('div', { class: 'ended-early-head' },
+        h('div', null,
+          h('h2', null, 'This session was ended early'),
+          h('p', null,
+            `It ended at ${fmtTime(session.endedAt)}`,
+            session.elapsedMs ? `, ${fmtMinutes(session.elapsedMs)} in` : '',
+            `. ${stopped.length} of ${people.length} hadn’t finished. `,
+            'Their results only count the exercises and sets they reached.')),
+        toggle),
+      list);
+  }
 
   CC.util.fill(main,
     early,
