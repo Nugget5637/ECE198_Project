@@ -8,71 +8,311 @@
   <p><a href="index.html">Home</a></p>
 
   <h1>Instructor Dashboard</h1>
-  <p>Session in progress. Time: 12:30. Participants: 5</p>
 
-  <table>
-    <tr>
-      <th>No.</th>
-      <th>Name</th>
-      <th>Exercise</th>
-      <th>Set</th>
-      <th>Reps</th>
-      <th>Form quality</th>
-      <th>Exertion (0-10)</th>
-      <th>Problems</th>
-    </tr>
-    <tr>
-      <td>1</td>
-      <td>Ann</td>
-      <td>Sit-to-stand</td>
-      <td>2 of 2</td>
-      <td>6 / 10</td>
-      <td class="good">88%</td>
-      <td>4</td>
-      <td>None</td>
-    </tr>
-    <tr>
-      <td>2</td>
-      <td>Bob</td>
-      <td>Mini squat</td>
-      <td>1 of 3</td>
-      <td>8 / 10</td>
-      <td class="bad">62%</td>
-      <td>6</td>
-      <td class="bad">Knees caving inward</td>
-    </tr>
-    <tr>
-      <td>3</td>
-      <td>Carol</td>
-      <td>Wall push-up</td>
-      <td>2 of 2</td>
-      <td>10 / 10</td>
-      <td class="good">91%</td>
-      <td>5</td>
-      <td>None</td>
-    </tr>
-    <tr>
-      <td>4</td>
-      <td>Dave</td>
-      <td>Heel raise</td>
-      <td>3 of 3</td>
-      <td>4 / 12</td>
-      <td class="good">80%</td>
-      <td class="bad">8</td>
-      <td class="bad">Very hard effort</td>
-    </tr>
-    <tr>
-      <td>5</td>
-      <td>Emma</td>
-      <td>Bicep curl</td>
-      <td>1 of 2</td>
-      <td>3 / 10</td>
-      <td class="bad">70%</td>
-      <td>3</td>
-      <td class="bad">Swinging the body to lift the weight</td>
-    </tr>
-  </table>
+  <!-- Part 1: setting up the class. Hidden once the session starts. -->
+  <div id="setup">
+    <h2>New session</h2>
+    <p>
+      Number of participants (1 to 10):
+      <input type="number" id="count" min="1" max="10" value="5">
+      <button onclick="makeRows()">Update</button>
+    </p>
 
-  <p><a href="results.html">End session and see results</a></p>
+    <table>
+      <thead>
+        <tr>
+          <th>No.</th>
+          <th>Name</th>
+          <th>Workout</th>
+        </tr>
+      </thead>
+      <tbody id="setupRows"></tbody>
+    </table>
+
+    <p>
+      Speed:
+      <select id="speed">
+        <option value="1">Normal</option>
+        <option value="3">3x faster</option>
+        <option value="10">10x faster</option>
+      </select>
+      (the faster speeds are for demos)
+    </p>
+
+    <p><button onclick="startSession()">Start session</button></p>
+  </div>
+
+  <!-- Part 2: the live session. Shown once the session starts. -->
+  <div id="live" style="display: none;">
+    <h2>Session in progress</h2>
+    <p>Time: <b id="clock">0:00</b>. Participants: <b id="liveCount"></b></p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>No.</th>
+          <th>Name</th>
+          <th>Exercise</th>
+          <th>Set</th>
+          <th>Reps</th>
+          <th>Form quality</th>
+          <th>Exertion (0-10)</th>
+          <th>Score so far</th>
+          <th>Problems</th>
+        </tr>
+      </thead>
+      <tbody id="liveRows"></tbody>
+    </table>
+
+    <p><button onclick="endSession()">End session and see results</button></p>
+  </div>
+
+  <p><small>Prototype. The reps, form quality and exertion are made up by a simulator, not a real camera.</small></p>
+
+  <script src="script.js"></script>
+  <script>
+    var session = null;
+    var timer = null;
+
+    // Sample names so the form isn't empty.
+    var SAMPLE_NAMES = ["Ann", "Bob", "Carol", "Dave", "Emma", "Frank", "Grace", "Henry", "Ivy", "Jack"];
+
+    // Builds one row per participant in the set-up table.
+    function makeRows() {
+      var count = Number(document.getElementById("count").value);
+      if (count < 1) count = 1;
+      if (count > 10) count = 10;
+      document.getElementById("count").value = count;
+
+      var html = "";
+      for (var i = 0; i < count; i++) {
+        html += "<tr>";
+        html += "<td>" + (i + 1) + "</td>";
+        html += "<td><input id='name" + i + "' value='" + SAMPLE_NAMES[i] + "'></td>";
+        html += "<td><select id='workout" + i + "'>";
+        for (var w = 0; w < WORKOUTS.length; w++) {
+          var selected = "";
+          if (w == i % WORKOUTS.length) selected = " selected";
+          html += "<option value='" + w + "'" + selected + ">" + describeWorkout(w) + "</option>";
+        }
+        html += "</select></td>";
+        html += "</tr>";
+      }
+      document.getElementById("setupRows").innerHTML = html;
+    }
+
+    function startSession() {
+      var count = Number(document.getElementById("count").value);
+      session = {
+        running: true,
+        date: new Date().toDateString(),
+        seconds: 0,
+        speed: Number(document.getElementById("speed").value),
+        people: []
+      };
+
+      for (var i = 0; i < count; i++) {
+        var name = document.getElementById("name" + i).value.trim();
+        if (name == "") name = "Patient " + (i + 1);
+        var workoutNumber = Number(document.getElementById("workout" + i).value);
+
+        session.people.push({
+          number: i + 1,
+          name: name,
+          workout: workoutNumber,
+          exerciseIndex: 0,      // which exercise in the workout they are on
+          set: 1,                // which set of that exercise
+          repsInSet: 0,
+          targetReps: 0,         // how many reps they will actually do this set
+          restLeft: 0,           // seconds of rest left (0 = working)
+          nextRepIn: randomBetween(1, 4),
+          done: false,
+          // Each person is a bit different:
+          skill: randomBetween(65, 92),   // their usual form quality
+          speed: randomBetween(2, 4),     // seconds per rep
+          lastQuality: 0,
+          exertion: 1 + Math.random() * 2,
+          peakExertion: 0,
+          problem: "",
+          tip: "",
+          repsDone: 0,
+          plannedReps: 0,  // planned reps of finished sets
+          repsOff: 0,      // how far finished sets were from the plan
+          qualityTotal: 0
+        });
+        startSet(session.people[i]);
+      }
+
+      saveData("session", session);
+      showLive();
+    }
+
+    // Called at the start of every set.
+    function startSet(person) {
+      var step = WORKOUTS[person.workout].exercises[person.exerciseIndex];
+      person.repsInSet = 0;
+      // Most sets are done as planned. Sometimes people stop short or do too many.
+      var chance = Math.random();
+      if (chance < 0.15) {
+        person.targetReps = step.reps - randomBetween(1, 3);
+      } else if (chance < 0.25) {
+        person.targetReps = step.reps + randomBetween(1, 2);
+      } else {
+        person.targetReps = step.reps;
+      }
+    }
+
+    // The simulator. Runs once per (simulated) second for each person.
+    function simulate(person) {
+      if (person.done) return;
+
+      // Resting: count down, and exertion comes back down.
+      if (person.restLeft > 0) {
+        person.restLeft--;
+        if (person.exertion > 2) person.exertion -= 0.5;
+        if (person.restLeft == 0) startSet(person);
+        return;
+      }
+
+      person.nextRepIn--;
+      if (person.nextRepIn > 0) return;
+      person.nextRepIn = person.speed;
+
+      // One rep. Quality drops a bit as the set goes on (they get tired).
+      var step = WORKOUTS[person.workout].exercises[person.exerciseIndex];
+      var quality = person.skill - person.repsInSet + randomBetween(-10, 10);
+      if (quality > 100) quality = 100;
+      if (quality < 20) quality = 20;
+
+      person.repsInSet++;
+      person.repsDone++;
+      person.qualityTotal += quality;
+      person.lastQuality = quality;
+      person.exertion += 0.2 + Math.random() * 0.2;
+      if (person.exertion > 10) person.exertion = 10;
+      if (person.exertion > person.peakExertion) person.peakExertion = person.exertion;
+
+      // Bad reps come with a problem the camera noticed.
+      if (quality < 70) {
+        var problems = EXERCISES[step.exercise].problems;
+        var problem = problems[randomBetween(0, problems.length - 1)];
+        person.problem = problem.message;
+        person.tip = problem.tip;
+      } else {
+        person.problem = "";
+        person.tip = "";
+      }
+
+      // End of the set?
+      if (person.repsInSet >= person.targetReps) {
+        finishSet(person, step.reps);
+        if (person.set < step.sets) {
+          person.set++;
+        } else {
+          person.exerciseIndex++;
+          person.set = 1;
+          if (person.exerciseIndex >= WORKOUTS[person.workout].exercises.length) {
+            person.done = true;
+            return;
+          }
+        }
+        person.restLeft = REST_SECONDS;
+      }
+    }
+
+    function showLive() {
+      document.getElementById("setup").style.display = "none";
+      document.getElementById("live").style.display = "block";
+      document.getElementById("liveCount").innerHTML = session.people.length;
+      drawTable();
+      timer = setInterval(tick, 1000 / session.speed);
+    }
+
+    function tick() {
+      session.seconds++;
+      for (var i = 0; i < session.people.length; i++) {
+        simulate(session.people[i]);
+      }
+      saveData("session", session);
+      drawTable();
+    }
+
+    function drawTable() {
+      document.getElementById("clock").innerHTML = formatTime(session.seconds);
+      var html = "";
+      for (var i = 0; i < session.people.length; i++) {
+        var p = session.people[i];
+        var workout = WORKOUTS[p.workout].exercises;
+
+        var exercise, setText, repsText;
+        if (p.done) {
+          exercise = "Finished!";
+          setText = "-";
+          repsText = "-";
+        } else {
+          var step = workout[p.exerciseIndex];
+          exercise = EXERCISES[step.exercise].name;
+          setText = p.set + " of " + step.sets;
+          repsText = p.repsInSet + " / " + step.reps;
+          if (p.restLeft > 0) repsText = "Resting (" + p.restLeft + "s)";
+        }
+
+        // Problems the instructor should know about.
+        var problems = [];
+        if (p.problem != "" && p.restLeft == 0 && !p.done) problems.push(p.problem);
+        if (p.exertion >= 8) problems.push("Very hard effort");
+        if (!p.done && p.restLeft == 0 && p.repsInSet > workout[p.exerciseIndex].reps) problems.push("Too many reps");
+
+        var qualityClass = p.lastQuality >= 75 ? "good" : "bad";
+        var exertionClass = p.exertion >= 8 ? "bad" : "";
+
+        html += "<tr>";
+        html += "<td>" + p.number + "</td>";
+        html += "<td>" + clean(p.name) + "</td>";
+        html += "<td>" + exercise + "</td>";
+        html += "<td>" + setText + "</td>";
+        html += "<td>" + repsText + "</td>";
+        html += "<td class='" + qualityClass + "'>" + (p.repsDone > 0 ? p.lastQuality + "%" : "-") + "</td>";
+        html += "<td class='" + exertionClass + "'>" + p.exertion.toFixed(1) + "</td>";
+        html += "<td>" + getScore(p) + "%</td>";
+        html += "<td class='bad'>" + (problems.length > 0 ? problems.join(", ") : "") + "</td>";
+        html += "</tr>";
+      }
+      document.getElementById("liveRows").innerHTML = html;
+    }
+
+    function endSession() {
+      clearInterval(timer);
+      session.running = false;
+
+      // Anyone part-way through a set: count that set as finished where they stopped.
+      for (var i = 0; i < session.people.length; i++) {
+        var p = session.people[i];
+        if (!p.done && p.restLeft == 0 && p.repsInSet > 0) {
+          var step = WORKOUTS[p.workout].exercises[p.exerciseIndex];
+          finishSet(p, step.reps);
+        }
+      }
+      saveData("session", session);
+
+      // Add this session to the list of past sessions, for the progress table.
+      var history = loadData("history");
+      if (history == null) history = [];
+      history.push(session);
+      saveData("history", history);
+
+      window.location.href = "results.html";
+    }
+
+    // When the page opens: carry on a running session (for example after a refresh),
+    // otherwise show the set-up form.
+    var saved = loadData("session");
+    if (saved != null && saved.running) {
+      session = saved;
+      showLive();
+    } else {
+      makeRows();
+    }
+  </script>
 </body>
 </html>

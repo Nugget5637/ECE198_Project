@@ -8,85 +8,115 @@
   <p><a href="index.html">Home</a></p>
 
   <h1>Session Results</h1>
-  <p>Monday, November 9, 2026. Length: 35 minutes</p>
+  <div id="results"></div>
 
-  <h2>Everyone</h2>
-  <table>
-    <tr>
-      <th>Name</th>
-      <th>Reps done</th>
-      <th>Average form quality</th>
-      <th>Highest exertion</th>
-      <th>Score</th>
-    </tr>
-    <tr>
-      <td>Ann</td>
-      <td>64 / 64</td>
-      <td>87%</td>
-      <td>5</td>
-      <td class="good">87%</td>
-    </tr>
-    <tr>
-      <td>Bob</td>
-      <td>50 / 60</td>
-      <td>65%</td>
-      <td>7</td>
-      <td class="bad">54%</td>
-    </tr>
-    <tr>
-      <td>Carol</td>
-      <td>40 / 40</td>
-      <td>90%</td>
-      <td>6</td>
-      <td class="good">90%</td>
-    </tr>
-    <tr>
-      <td>Dave</td>
-      <td>36 / 36</td>
-      <td>79%</td>
-      <td>9</td>
-      <td class="good">79%</td>
-    </tr>
-    <tr>
-      <td>Emma</td>
-      <td>18 / 20</td>
-      <td>72%</td>
-      <td>4</td>
-      <td class="bad">65%</td>
-    </tr>
-  </table>
+  <h2>Progress</h2>
+  <p>
+    Show past sessions for:
+    <select id="who" onchange="drawProgress()"></select>
+  </p>
+  <div id="progress"></div>
 
   <p>
-    <b>How the score works:</b> score = (reps done / reps planned) x average form quality.
-    For example, 50 / 60 reps at 65% quality gives 0.83 x 65% = 54%.
+    <b>How the score works:</b> score = (1 - reps off / reps planned) x average form quality.
+    "Reps off" is how far each set was from the plan, so stopping short and doing too many both
+    lose points. For example, 2 sets of 10 done as 10 and 7 at 80% quality gives
+    (1 - 3 / 20) x 80% = 68%.
   </p>
 
-  <h2>Ann's progress</h2>
-  <table>
-    <tr>
-      <th>Date</th>
-      <th>Score</th>
-    </tr>
-    <tr>
-      <td>Oct 27</td>
-      <td>72%</td>
-    </tr>
-    <tr>
-      <td>Oct 29</td>
-      <td>75%</td>
-    </tr>
-    <tr>
-      <td>Nov 3</td>
-      <td>81%</td>
-    </tr>
-    <tr>
-      <td>Nov 5</td>
-      <td>84%</td>
-    </tr>
-    <tr>
-      <td>Nov 9</td>
-      <td>87%</td>
-    </tr>
-  </table>
+  <p><button onclick="clearHistory()">Delete all saved sessions</button></p>
+
+  <script src="script.js"></script>
+  <script>
+    var pastSessions = loadData("history");
+    if (pastSessions == null) pastSessions = [];
+
+    function drawResults() {
+      if (pastSessions.length == 0) {
+        document.getElementById("results").innerHTML =
+          "<p>No sessions yet. Start one on the <a href='instructor.html'>instructor dashboard</a>.</p>";
+        return;
+      }
+
+      // The most recent session.
+      var session = pastSessions[pastSessions.length - 1];
+      var html = "<p>" + session.date + ". Length: " + formatTime(session.seconds) + "</p>";
+      html += "<table><tr><th>Name</th><th>Reps done</th><th>Average form quality</th>" +
+              "<th>Highest exertion</th><th>Finished?</th><th>Score</th></tr>";
+
+      for (var i = 0; i < session.people.length; i++) {
+        var p = session.people[i];
+        var score = getScore(p);
+        var finished;
+        if (p.done) {
+          finished = "Yes";
+        } else {
+          var step = WORKOUTS[p.workout].exercises[p.exerciseIndex];
+          finished = "No, stopped at " + EXERCISES[step.exercise].name + " set " + p.set;
+        }
+        html += "<tr>";
+        html += "<td>" + clean(p.name) + "</td>";
+        html += "<td>" + p.repsDone + "</td>";
+        html += "<td>" + getAverageQuality(p) + "%</td>";
+        html += "<td>" + p.peakExertion.toFixed(1) + "</td>";
+        html += "<td>" + finished + "</td>";
+        html += "<td class='" + (score >= 75 ? "good" : "bad") + "'>" + score + "%</td>";
+        html += "</tr>";
+      }
+      html += "</table>";
+      document.getElementById("results").innerHTML = html;
+    }
+
+    // Fills the progress dropdown with everyone who has been in a session.
+    function fillNames() {
+      var names = [];
+      for (var s = 0; s < pastSessions.length; s++) {
+        for (var i = 0; i < pastSessions[s].people.length; i++) {
+          var name = pastSessions[s].people[i].name;
+          if (names.indexOf(name) == -1) names.push(name);
+        }
+      }
+      var html = "";
+      for (var n = 0; n < names.length; n++) {
+        html += "<option>" + clean(names[n]) + "</option>";
+      }
+      document.getElementById("who").innerHTML = html;
+    }
+
+    // A table of one person's score in every session they were in.
+    function drawProgress() {
+      var name = document.getElementById("who").value;
+      if (name == "") {
+        document.getElementById("progress").innerHTML = "<p>No sessions yet.</p>";
+        return;
+      }
+      var html = "<table><tr><th>Session</th><th>Date</th><th>Score</th></tr>";
+      for (var s = 0; s < pastSessions.length; s++) {
+        for (var i = 0; i < pastSessions[s].people.length; i++) {
+          var p = pastSessions[s].people[i];
+          if (p.name == name) {
+            html += "<tr><td>" + (s + 1) + "</td><td>" + pastSessions[s].date + "</td><td>" + getScore(p) + "%</td></tr>";
+          }
+        }
+      }
+      html += "</table>";
+      document.getElementById("progress").innerHTML = html;
+    }
+
+    function clearHistory() {
+      if (confirm("Delete all saved sessions?")) {
+        localStorage.removeItem("history");
+        localStorage.removeItem("session");
+        pastSessions = [];
+        drawResults();
+        fillNames();
+        drawProgress();
+      }
+    }
+
+    drawResults();
+    fillNames();
+    drawProgress();
+  </script>
 </body>
 </html>

@@ -7,43 +7,104 @@
 <body>
   <p><a href="index.html">Home</a></p>
 
-  <h1>Hi Ann!</h1>
-  <p>You're doing great. Keep it up!</p>
+  <p>
+    I am:
+    <select id="who" onchange="drawPage()"></select>
+  </p>
 
-  <h2>Right now: Sit-to-stand</h2>
-  <p>Set 2 of 2, 6 out of 10 reps</p>
-  <progress value="6" max="10"></progress>
+  <div id="page"></div>
 
-  <p><b>Tip:</b> Keep your knees in line with your toes.</p>
+  <p><small>Open the instructor dashboard in another tab in this browser. This page follows the instructor's session.</small></p>
 
-  <h2>Today's workout</h2>
-  <table>
-    <tr>
-      <th>Exercise</th>
-      <th>Sets</th>
-      <th>Reps</th>
-      <th>Done?</th>
-    </tr>
-    <tr>
-      <td>Front arm raise</td>
-      <td>2</td>
-      <td>10</td>
-      <td class="good">Yes</td>
-    </tr>
-    <tr>
-      <td>Sit-to-stand</td>
-      <td>2</td>
-      <td>10</td>
-      <td>In progress</td>
-    </tr>
-    <tr>
-      <td>Heel raise</td>
-      <td>2</td>
-      <td>12</td>
-      <td>Not yet</td>
-    </tr>
-  </table>
+  <script src="script.js"></script>
+  <script>
+    // Remembers which participant was picked, even when the list is rebuilt.
+    var picked = 0;
 
-  <p><a href="results.html">See my results</a></p>
+    // Fills the "I am" list with the names in the session.
+    function fillList(session) {
+      var select = document.getElementById("who");
+      if (select.value != "") picked = Number(select.value);
+      var html = "";
+      for (var i = 0; i < session.people.length; i++) {
+        var selected = (i == picked) ? " selected" : "";
+        html += "<option value='" + i + "'" + selected + ">" + clean(session.people[i].name) + "</option>";
+      }
+      select.innerHTML = html;
+    }
+
+    function drawPage() {
+      var session = loadData("session");
+      var page = document.getElementById("page");
+
+      if (session == null) {
+        document.getElementById("who").innerHTML = "";
+        page.innerHTML = "<h1>Waiting for your instructor</h1><p>Your session starts when your instructor starts the class.</p>";
+        return;
+      }
+
+      fillList(session);
+      var person = session.people[picked];
+      if (person == null) {
+        picked = 0;
+        person = session.people[0];
+      }
+      var workout = WORKOUTS[person.workout].exercises;
+
+      var html = "<h1>Hi " + clean(person.name) + "!</h1>";
+
+      if (!session.running) {
+        html += "<p>The session is over. Well done!</p>";
+        html += "<p><a href='results.html'>See my results</a></p>";
+        page.innerHTML = html;
+        return;
+      }
+
+      // What they are doing right now.
+      if (person.done) {
+        html += "<h2>You finished your workout!</h2>";
+        html += "<p>Great job. Wait for your instructor to end the session.</p>";
+      } else {
+        var step = workout[person.exerciseIndex];
+        html += "<h2>Right now: " + EXERCISES[step.exercise].name + "</h2>";
+        if (person.restLeft > 0) {
+          html += "<p>Rest for " + person.restLeft + (person.restLeft == 1 ? " second." : " seconds.") + " Next up: set " + person.set + " of " + step.sets + ".</p>";
+        } else {
+          html += "<p>Set " + person.set + " of " + step.sets + ", " + person.repsInSet + " out of " + step.reps + " reps</p>";
+          html += "<progress value='" + person.repsInSet + "' max='" + step.reps + "'></progress>";
+        }
+
+        // An encouraging message, or a tip if the camera spotted a problem.
+        if (person.restLeft > 0) {
+          html += "<p>Take a breather. You've earned it.</p>";
+        } else if (person.tip != "") {
+          html += "<p class='bad'><b>Tip:</b> " + person.tip + "</p>";
+        } else if (person.exertion >= 8) {
+          html += "<p class='bad'><b>Tip:</b> That looks like hard work. Slow down and breathe.</p>";
+        } else if (person.repsDone > 0) {
+          html += "<p class='good'>Good form. Keep it up!</p>";
+        }
+      }
+
+      // The whole workout.
+      html += "<h2>Today's workout</h2>";
+      html += "<table><tr><th>Exercise</th><th>Sets</th><th>Reps</th><th>Done?</th></tr>";
+      for (var i = 0; i < workout.length; i++) {
+        var status;
+        if (person.done || i < person.exerciseIndex) status = "<span class='good'>Yes</span>";
+        else if (i == person.exerciseIndex) status = "In progress";
+        else status = "Not yet";
+        html += "<tr><td>" + EXERCISES[workout[i].exercise].name + "</td><td>" + workout[i].sets +
+                "</td><td>" + workout[i].reps + "</td><td>" + status + "</td></tr>";
+      }
+      html += "</table>";
+      html += "<p>Time: " + formatTime(session.seconds) + ". Score so far: " + getScore(person) + "%</p>";
+
+      page.innerHTML = html;
+    }
+
+    drawPage();
+    setInterval(drawPage, 500);
+  </script>
 </body>
 </html>
