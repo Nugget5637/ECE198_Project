@@ -104,7 +104,7 @@
       var count = Number(document.getElementById("count").value);
       session = {
         running: true,
-        date: new Date().toDateString(),
+        date: new Date().toLocaleString(),
         seconds: 0,
         speed: Number(document.getElementById("speed").value),
         people: []

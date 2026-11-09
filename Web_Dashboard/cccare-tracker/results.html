@@ -10,10 +10,7 @@
   <div id="results"></div>
 
   <h2>Progress</h2>
-  <p>
-    Show past sessions for:
-    <select id="who" onchange="drawProgress()"></select>
-  </p>
+  <p>Each person's score in every session they have been in.</p>
   <div id="progress"></div>
 
   <p>
@@ -40,7 +37,7 @@
       // The most recent session.
       var session = pastSessions[pastSessions.length - 1];
       var html = "<p>" + session.date + ". Length: " + formatTime(session.seconds) + "</p>";
-      html += "<table border="1"><tr><th>Name</th><th>Reps done</th><th>Average form quality</th>" +
+      html += "<table border='1'><tr><th>Name</th><th>Reps done</th><th>Average form quality</th>" +
               "<th>Highest exertion</th><th>Finished?</th><th>Score</th></tr>";
 
       for (var i = 0; i < session.people.length; i++) {
@@ -66,39 +63,19 @@
       document.getElementById("results").innerHTML = html;
     }
 
-    // Fills the progress dropdown with everyone who has been in a session.
-    function fillNames() {
-      var names = [];
-      for (var s = 0; s < pastSessions.length; s++) {
-        for (var i = 0; i < pastSessions[s].people.length; i++) {
-          var name = pastSessions[s].people[i].name;
-          if (names.indexOf(name) == -1) names.push(name);
-        }
-      }
-      var html = "";
-      for (var n = 0; n < names.length; n++) {
-        html += "<option>" + clean(names[n]) + "</option>";
-      }
-      document.getElementById("who").innerHTML = html;
-    }
-
-    // A table of one person's score in every session they were in.
+    // A progress table for each person in the most recent session.
     function drawProgress() {
-      var name = document.getElementById("who").value;
-      if (name == "") {
+      if (pastSessions.length == 0) {
         document.getElementById("progress").innerHTML = "<p>No sessions yet.</p>";
         return;
       }
-      var html = "<table border="1"><tr><th>Session</th><th>Date</th><th>Score</th></tr>";
-      for (var s = 0; s < pastSessions.length; s++) {
-        for (var i = 0; i < pastSessions[s].people.length; i++) {
-          var p = pastSessions[s].people[i];
-          if (p.name == name) {
-            html += "<tr><td>" + (s + 1) + "</td><td>" + pastSessions[s].date + "</td><td>" + getScore(p) + "%</td></tr>";
-          }
-        }
+      var lastSession = pastSessions[pastSessions.length - 1];
+      var html = "";
+      for (var i = 0; i < lastSession.people.length; i++) {
+        var name = lastSession.people[i].name;
+        html += "<h3>" + clean(name) + "</h3>";
+        html += progressTable(name);
       }
-      html += "</table>";
       document.getElementById("progress").innerHTML = html;
     }
 
@@ -108,13 +85,11 @@
         localStorage.removeItem("session");
         pastSessions = [];
         drawResults();
-        fillNames();
         drawProgress();
       }
     }
 
     drawResults();
-    fillNames();
     drawProgress();
   </script>
 </body>

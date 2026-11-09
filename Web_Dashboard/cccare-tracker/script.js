@@ -135,6 +135,33 @@ function formatTime(seconds) {
   return minutes + ":" + rest;
 }
 
+// Makes a table of one person's score in every saved session they were in,
+// with a bar for each score so you can see it going up or down.
+function progressTable(name) {
+  var pastSessions = loadData("history");
+  if (pastSessions == null) pastSessions = [];
+
+  var html = "<table border='1'><tr><th>Session</th><th>Date</th><th>Score</th><th></th></tr>";
+  var found = 0;
+  for (var s = 0; s < pastSessions.length; s++) {
+    for (var i = 0; i < pastSessions[s].people.length; i++) {
+      var p = pastSessions[s].people[i];
+      if (p.name == name) {
+        var score = getScore(p);
+        html += "<tr><td>" + (s + 1) + "</td><td>" + pastSessions[s].date + "</td><td>" + score + "%</td>";
+        html += "<td><progress value='" + score + "' max='100'></progress></td></tr>";
+        found++;
+      }
+    }
+  }
+  html += "</table>";
+
+  if (found == 0) {
+    return "<p>No finished sessions yet.</p>";
+  }
+  return html;
+}
+
 // Makes typed-in text safe to put inside innerHTML.
 function clean(text) {
   return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

@@ -17,17 +17,29 @@
 
   <script src="script.js"></script>
   <script>
-    // Remembers which participant was picked, even when the list is rebuilt.
+    // Which participant was picked in the "I am" list.
     var picked = 0;
+    // The names currently in the list, so we only rebuild it when they change.
+    // (Rebuilding it every half second would close the list while you are picking.)
+    var namesInList = "";
 
     // Fills the "I am" list with the names in the session.
     function fillList(session) {
       var select = document.getElementById("who");
       if (select.value != "") picked = Number(select.value);
-      var html = "";
+
+      var names = [];
       for (var i = 0; i < session.people.length; i++) {
+        names.push(session.people[i].name);
+      }
+      if (names.join(",") == namesInList) return;
+      namesInList = names.join(",");
+
+      if (picked >= names.length) picked = 0;
+      var html = "";
+      for (var i = 0; i < names.length; i++) {
         var selected = (i == picked) ? " selected" : "";
-        html += "<option value='" + i + "'" + selected + ">" + clean(session.people[i].name) + "</option>";
+        html += "<option value='" + i + "'" + selected + ">" + clean(names[i]) + "</option>";
       }
       select.innerHTML = html;
     }
@@ -38,6 +50,7 @@
 
       if (session == null) {
         document.getElementById("who").innerHTML = "";
+        namesInList = "";
         page.innerHTML = "<h1>Waiting for your instructor</h1><p>Your session starts when your instructor starts the class.</p>";
         return;
       }
@@ -53,8 +66,10 @@
       var html = "<h1>Hi " + clean(person.name) + "!</h1>";
 
       if (!session.running) {
-        html += "<p>The session is over. Well done!</p>";
-        html += "<p><a href='results.html'>See my results</a></p>";
+        html += "<p>The session is over. Well done! Your score today: <b>" + getScore(person) + "%</b></p>";
+        html += "<h2>Your progress</h2>";
+        html += progressTable(person.name);
+        html += "<p><a href='results.html'>See everyone's results</a></p>";
         page.innerHTML = html;
         return;
       }
@@ -87,7 +102,7 @@
 
       // The whole workout.
       html += "<h2>Today's workout</h2>";
-      html += "<table border="1"><tr><th>Exercise</th><th>Sets</th><th>Reps</th><th>Done?</th></tr>";
+      html += "<table border='1'><tr><th>Exercise</th><th>Sets</th><th>Reps</th><th>Done?</th></tr>";
       for (var i = 0; i < workout.length; i++) {
         var status;
         if (person.done || i < person.exerciseIndex) status = "<span class='good'>Yes</span>";
