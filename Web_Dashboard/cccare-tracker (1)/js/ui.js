@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   const CC = (window.CC = window.CC || {});
-  const { h, svg, fill, clamp, pad2, fmtDate, fmtExertion, plural } = CC.util;
+  const { h, svg, fill, clamp, pad2, fmtDate, fmtExertion, plural, fmtClock } = CC.util;
 
   // A percentage as a colour: 0% red, 50% yellow, 100% green, blending smoothly in between.
   // Bars are coloured by the percentage they show. Wheels are filled by success but
@@ -117,10 +117,43 @@
     const exList = h('ol', { class: 'block-ex' });
     const issues = h('div', { class: 'issues' }, h('p', null, 'Waiting for the first rep'));
     if (patient) issues.setAttribute('aria-live', 'polite');
+    // Exercising, resting, not moving…: from Tracker.condition().
+    const condEl = h('p', { class: 'block-cond cond-waiting' }, 'Waiting to start');
+    // A possible emergency: a banner across the top of the block.
+    const alertText = h('div', { class: 'block-alert-text' });
+    const ackBtn = !patient && opts.onAck ? h('button', { type: 'button', class: 'block-ack' }, 'Checked, OK') : null;
+    const alertEl = h('div', { class: 'block-alert', role: 'alert', hidden: true }, alertText, ackBtn);
+    let alertKey = '';
+    let alertShown = '';
+    if (ackBtn) ackBtn.addEventListener('click', () => opts.onAck(slot.id, alertKey));
+
+    function renderCondition(c) {
+      condEl.className = 'block-cond cond-' + c.state;
+      condEl.textContent = c.label;
+      const danger = c.state === 'danger' ? c.danger : [];
+      el.classList.toggle('danger', danger.length > 0 && !c.acknowledged);
+      el.classList.toggle('danger-ack', danger.length > 0 && !!c.acknowledged);
+      alertKey = c.key || '';
+      const shown = danger.length ? alertKey + '|' + danger.map((d) => d.message).join('|') + '|' + !!c.acknowledged : '';
+      if (shown === alertShown) return;
+      alertShown = shown;
+      alertEl.hidden = !danger.length;
+      if (!danger.length) return;
+      // The instructor sees what the signs are; the patient sees what to do.
+      fill(alertText, patient
+        ? [h('strong', null, 'Are you OK? Your instructor has been alerted.'), h('span', null, danger[0].cue)]
+        : danger.map((d) => h('strong', { class: 'warn' }, d.message)));
+      if (ackBtn) {
+        ackBtn.disabled = !!c.acknowledged;
+        ackBtn.textContent = c.acknowledged ? 'Checked' : 'Checked, OK';
+      }
+    }
 
     const el = h('article', { class: 'block' + (large ? ' block-large' : ''), id: 'block-' + slot.id, 'aria-label': CC.displayName(slot) },
+      alertEl,
       h('div', { class: 'block-head' }, h('span', { class: 'block-n' }, pad2(CC.slotNumber(slot.id))), state),
       nameEl,
+      condEl,
       h('div', { class: 'wheels' },
         h('div', { class: 'wheel wheel-ex', title: 'This exercise' },
           exWheel.el, h('div', { class: 'wheel-text' }, exPct, setText, repText)),
@@ -215,9 +248,14 @@
         state.textContent = snap.head;
         nameEl.textContent = CC.displayName(snap);
         renderExercises(snap.exercises);
-        renderIssues(snap.issues, snap.status);
+        // During a possible emergency, "no reps" and "not moving" add nothing (the alert says
+        // more), and telling the person to carry on would contradict it.
+        const danger = snap.condition && snap.condition.state === 'danger';
+        const shownIssues = danger ? snap.issues.filter((i) => !/^(No reps|Not moving)/.test(i.message)) : snap.issues;
+        renderIssues(shownIssues, danger ? (patient ? 'Your instructor is on the way.' : 'Check on them now.') : snap.status);
         el.classList.toggle('needs-attention', snap.issues.length > 0);
         el.classList.toggle('paused', !!snap.paused);
+        if (snap.condition) renderCondition(snap.condition);
       },
       message(text) {
         lastKey = 'msg:' + text;
@@ -243,6 +281,14 @@
   // Everything that went wrong in a saved result: { message, detail, cue }.
   function whatWentWrong(result) {
     const items = [];
+    // Possible emergencies during the session come first.
+    for (const inc of result.incidents || []) {
+      items.push({
+        message: inc.message,
+        detail: `${fmtClock(inc.atMs)} into the session`,
+        cue: 'Tell your instructor or doctor how you felt at that point.',
+      });
+    }
     for (const e of result.exercises) {
       const name = CC.exerciseName(e.exercise);
       if (!CC.score.repsDone(e)) {

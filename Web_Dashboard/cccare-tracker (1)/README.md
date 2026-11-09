@@ -113,6 +113,24 @@ The thresholds are in `LIMITS` in `js/score.js`. The exercises, their faults and
 
 **Look.** Text is set in DM Sans (bundled in `css/fonts/`, SIL Open Font License). The moon button in the top right switches night mode; the choice is remembered in this browser. The GitHub button next to it opens the repository.
 
+## Safety: possible emergencies
+
+During a live session, each block shows what the person is doing, under their name: **Exercising**, **Resting**, **Waiting to start**, **Finished**, or **Not moving for …**. The last one appears when the camera has seen no movement for 30 seconds, or for 30 seconds beyond the planned rest.
+
+If someone may be hurt, exhausted or unconscious, their whole block gets a thick pulsing red outline, with a red warning banner across the top. They're also listed first, in red, as **Possible emergency** above the grid. The signs (`Tracker.dangers` in `js/score.js`, thresholds in `LIMITS`):
+
+| Alert | When |
+| --- | --- |
+| May be unconscious | fallen, or on the floor during a standing exercise, and not moving for 15 seconds |
+| May be hurt | the camera reports a fall; or on the floor during a standing exercise; or form suddenly 30 points worse than usual, then they stop mid-set |
+| May be exhausted | effort 9.5 of 10, or 9 of 10 for 20 seconds; or very hard effort with form suddenly much worse |
+
+These are reasons to go and check, not a diagnosis: the camera can't be certain. **Checked, OK** on the banner stops the pulsing once the instructor has seen to them. The banner stays until the signs clear, and a different alert pulses again. The patient's own screen shows "Are you OK? Your instructor has been alerted" with what to do, and stops the encouraging messages. Alerts keep working while the session is paused. Every alert is saved with the results, so it shows on the session results page and in the patient's "To work on" list.
+
+Floor exercises (push-up, plank, crunch, glute bridge, superman, bird dog, mountain climbers) are marked `floor: true` in `js/exercises.js`, so being on the floor during them is normal.
+
+The simulator gives each person a 2% chance of a simulated emergency (a fall, fainting, or exhaustion). To see them on purpose, add `?incidents=3` to `instructor.html` to make three people have one, together with `?speed=10` so it happens quickly.
+
 ## How the patient screen follows the instructor
 
 The patient can't start or stop a session. While a session runs, the instructor's page writes each participant's live block to this browser's storage twice a second. The patient page reads its own block from there, so it goes live when the instructor starts and opens the results when the instructor ends. This works for tabs in the **same browser on the same computer**. Across different devices it would need a small relay server (the same WebSocket server described below could carry it).
@@ -133,12 +151,17 @@ The server sends JSON messages, one at a time or several in an array:
 { "type": "rep", "pid": "P03", "quality": 82, "faults": ["knees_in"], "exercise": "sit_to_stand" }
 { "type": "exertion", "pid": "P03", "value": 6 }
 { "type": "faults", "pid": "P03", "faults": ["lean_forward"] }
+{ "type": "motion", "pid": "P03", "level": 0.6 }
+{ "type": "posture", "pid": "P03", "posture": "fallen" }
 ```
 
 - `pid` is the block number, written as `"P03"`, `"3"` or `3`.
 - `rep` is one finished repetition. `quality` is 0 to 100. `faults` lists the fault codes seen during that rep, or is empty. `exercise` is optional: when given, the rep is counted against that exercise in the workout; when left out, reps fill the workout in order, and a pause of about 15 seconds starts the next set.
 - `exertion` is on a 0 to 10 scale. It can come from a heart-rate sensor on the ESP32 or be estimated from movement.
 - `faults` on its own sends live form feedback between reps.
+- `motion` is how much the person is moving, `level` 0 (completely still) to 1, sent every second or two. It drives "Not moving" and the unconscious alert. Without it, only "No reps for …" can be shown.
+- `posture` is `upright` (standing, sitting or kneeling), `floor` (lying) or `fallen` (a fall was seen), sent when it changes. It drives the hurt and unconscious alerts.
+- While the session is paused, reps and form feedback are ignored, but `motion`, `posture` and `exertion` still count, so alerts keep working.
 - Fault codes are listed per exercise in `js/exercises.js`. An unknown code is shown as plain text.
 
 When a session starts, the dashboard sends `{"type":"session","state":"start","participants":["P01",…],"workouts":{…}}`, where `workouts` maps each station to its planned exercises, sets, reps and rest seconds. It sends `{"type":"session","state":"pause"}` and `{"type":"session","state":"resume"}` when the instructor pauses (events that arrive while paused are ignored), and `{"type":"session","state":"end"}` when the session ends. Invalid messages are ignored.

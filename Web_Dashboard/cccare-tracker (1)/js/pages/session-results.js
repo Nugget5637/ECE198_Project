@@ -27,6 +27,9 @@ CC.start(function () {
   document.title = `Results, ${fmtDate(session.startedAt)} · CCCARE exercise tracking`;
 
   function mainIssue(p) {
+    // A possible emergency during the session outranks everything else.
+    const inc = (p.incidents || [])[0];
+    if (inc) return h('span', { class: 'incident warn' }, inc.message, (p.incidents.length > 1 ? ` +${p.incidents.length - 1}` : ''));
     const top = CC.ui.faultList(p)[0];
     if (!top) return h('span', { class: 'muted' }, '—');
     return [top.message, ' ', h('span', { class: 'mono muted' }, `×${top.count}`)];

@@ -110,7 +110,9 @@ CC.start(function () {
       if (live.paused) setState('Your instructor has paused the session.', 'paused');
       else setState('Your session is running.', 'live');
       block.update(snap);
-      cheer(snap, !!live.paused);
+      // During a possible emergency the block's alert says what to do; no cheering.
+      if (snap.condition && snap.condition.state === 'danger') hideCheer();
+      else cheer(snap, !!live.paused);
       return;
     }
     hideCheer();

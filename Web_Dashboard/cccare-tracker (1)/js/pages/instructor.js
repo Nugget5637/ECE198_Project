@@ -271,7 +271,13 @@ CC.start(function () {
   function startLive(slots) {
     const startedAt = Date.now();
     const sessionId = CC.sessions.newId(startedAt);
-    const blocks = new Map(slots.map((s) => [s.id, CC.ui.block(s, { audience: 'instructor' })]));
+    // "Checked, OK" on a block's alert: the instructor has seen to them.
+    const onAck = (id, key) => {
+      const t = trackers.get(id);
+      if (t) t.acknowledge(key);
+      draw();
+    };
+    const blocks = new Map(slots.map((s) => [s.id, CC.ui.block(s, { audience: 'instructor', onAck })]));
     const grid = document.getElementById('grid');
     const clock = document.getElementById('clock');
     const feedEl = document.getElementById('feed');
@@ -299,7 +305,10 @@ CC.start(function () {
       slots,
       (ev) => {
         const t = trackers.get(ev.pid);
-        if (t && pausedAt == null) t.apply(ev, sessionNow());
+        if (!t) return;
+        // Paused: reps don't count, but safety signals (movement, posture, exertion) always do.
+        const safety = ev.type === 'motion' || ev.type === 'posture' || ev.type === 'exertion';
+        if (pausedAt == null || safety) t.apply(ev, sessionNow(), Date.now());
       },
       (status) => (feedEl.textContent = `${feed.label}, ${status}`));
     const trackers = new Map(slots.map((s) => [s.id, new CC.Tracker(s, startedAt, feed.speed)]));
@@ -313,30 +322,40 @@ CC.start(function () {
       clock.textContent = fmtClock(now - startedAt);
       const snapshots = {};
       const flagged = [];
+      const emergencies = [];
       for (const [id, t] of trackers) {
-        const snap = t.snapshot(now);
+        const snap = t.snapshot(now, Date.now());
         if (paused) {
           snap.paused = true;
           snap.head = 'paused';
           snap.status = 'Paused by the instructor';
           snap.issues = [];
+          // A possible emergency still shows while paused.
+          if (snap.condition.state !== 'danger') snap.condition = Object.assign({}, snap.condition, { state: 'paused', label: 'Paused' });
         }
         snapshots[id] = snap;
         blocks.get(id).update(snap);
-        if (snap.issues.length) flagged.push(t);
+        if (snap.condition.state === 'danger' && !snap.condition.acknowledged) emergencies.push(t);
+        else if (snap.issues.length || snap.condition.state === 'danger') flagged.push(t);
       }
       // Patient pages open in this browser show their own block from this.
       CC.live.write({ state: 'live', paused, id: sessionId, startedAt, updatedAt: Date.now(), participants: snapshots });
 
-      const key = (paused ? 'p:' : '') + flagged.map((t) => t.id).join(',');
+      const key = (paused ? 'p:' : '') + emergencies.map((t) => t.id).join(',') + '|' + flagged.map((t) => t.id).join(',');
       if (key === flaggedKey) return;
       flaggedKey = key;
-      fill(attention, ...(paused
+      // Possible emergencies come first, in red, so they can't be missed.
+      const urgent = emergencies.length
+        ? [h('span', { class: 'emergency-list' },
+          h('b', null, `Possible emergency (${emergencies.length})`),
+          ...emergencies.map((t) => h('a', { href: '#block-' + t.id }, attentionLabel(t))))]
+        : [];
+      fill(attention, ...urgent, ...(paused
         ? [h('b', null, 'Paused. '), h('span', { class: 'muted' }, 'Reps aren’t counted until you resume.')]
         : flagged.length
           ? [h('b', null, `Needs attention (${flagged.length})`),
             ...flagged.map((t) => h('a', { href: '#block-' + t.id }, attentionLabel(t)))]
-          : [h('span', { class: 'muted' }, 'Nobody needs attention right now.')]));
+          : emergencies.length ? [] : [h('span', { class: 'muted' }, 'Nobody needs attention right now.')]));
     }
 
     pauseBtn.addEventListener('click', () => {
