@@ -1,7 +1,7 @@
 /* Patient: one block for the signed-in participant. It follows the instructor's session:
    it goes live when the instructor starts, and opens the results when the instructor ends.
    The patient can't start or end a session. */
-(function () {
+CC.start(function () {
   'use strict';
   const account = CC.auth.require('patient');
   if (!account) return;
@@ -93,8 +93,7 @@
     stateEl.textContent = text;
   }
 
-  function check() {
-    const live = CC.live.read();
+  function check(live) {
     const now = Date.now();
 
     if (live && live.state === 'live' && now - live.updatedAt < STALE_MS) {
@@ -135,11 +134,8 @@
     if (!shown) setState('Waiting for your instructor to start the session.', 'waiting');
   }
 
-  // The instructor's page writes to localStorage twice a second. Other tabs hear about it
-  // through the storage event; the one-second check also notices when updates stop.
-  window.addEventListener('storage', (e) => {
-    if (e.key === CC.live.key) check();
-  });
-  setInterval(check, 1000);
-  check();
-})();
+  // The instructor's page sends its blocks twice a second. watch() passes them on about
+  // once a second (from this browser's storage, or from the backend), which also notices
+  // when updates stop.
+  CC.live.watch(check);
+});

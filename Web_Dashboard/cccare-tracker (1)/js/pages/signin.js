@@ -1,7 +1,7 @@
 /* Sign-in page. Existing users sign in with their username and password; the account
    decides whether they go to the instructor or patient pages. First-time users press
    Sign up, pick a username and password, and choose instructor or patient. */
-(function () {
+CC.start(function () {
   'use strict';
   const { h } = CC.util;
   const signin = document.getElementById('signin');
@@ -37,7 +37,14 @@
       ', or sign in with another account.');
   }
 
-  signin.addEventListener('submit', (e) => {
+  // Disables a form's button while the server answers, so it isn't sent twice.
+  function busy(form, on) {
+    const btn = form.querySelector('button[type=submit]');
+    btn.disabled = on;
+    btn.setAttribute('aria-busy', String(on));
+  }
+
+  signin.addEventListener('submit', async (e) => {
     e.preventDefault();
     const username = signin.elements.username.value;
     const password = signin.elements.password.value;
@@ -45,17 +52,19 @@
       error.textContent = 'Enter your username and password.';
       return;
     }
-    const outcome = CC.auth.signIn(username, password);
-    if (outcome) {
+    busy(signin, true);
+    const outcome = await CC.auth.signIn(username, password);
+    busy(signin, false);
+    if (outcome.account) {
       location.href = CC.auth.home(outcome.account);
       return;
     }
-    error.textContent = 'That username and password don’t match an account.';
+    error.textContent = outcome.error;
     signin.elements.password.value = '';
     signin.elements.password.focus();
   });
 
-  signup.addEventListener('submit', (e) => {
+  signup.addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = signup.elements;
     const role = f.role.value;
@@ -64,7 +73,9 @@
     else if (f.password.value !== f.confirm.value) problem = 'The two passwords don’t match.';
     else if (!role) problem = 'Choose whether this account is for an instructor or a patient.';
     if (!problem) {
-      const outcome = CC.auth.signUp(f.username.value, f.password.value, role);
+      busy(signup, true);
+      const outcome = await CC.auth.signUp(f.username.value, f.password.value, role);
+      busy(signup, false);
       if (outcome.account) {
         location.href = CC.auth.home(outcome.account);
         return;
@@ -73,4 +84,4 @@
     }
     signupError.textContent = problem;
   });
-})();
+}, { load: false });

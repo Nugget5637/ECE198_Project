@@ -1,5 +1,5 @@
 /* Instructor: everyone's results for one session. Each row opens that patient's results. */
-(function () {
+CC.start(function () {
   'use strict';
   const account = CC.auth.require('instructor');
   if (!account) return;
@@ -110,4 +110,4 @@
     h('p', { class: 'legend mono stat-legend' }, 'boxes: poor ', CC.ui.swatches(), ' good. Exertion is judged by its peak: green up to 5, red at 9 or more.'),
     h('div', { class: 'results-actions' },
       h('a', { class: 'btn', href: 'instructor.html' }, 'New session')));
-})();
+});

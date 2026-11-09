@@ -1,7 +1,8 @@
 /* Profile for whoever is signed in: a picture, a birthday and a short biography.
-   The picture is cropped to a square and shrunk to 256 pixels before it's saved, so it
-   fits in the browser's storage. */
-(function () {
+   The picture comes from a file (the paperclip) or the camera (the browser asks for
+   permission first). Either way it's cropped to a square and shrunk to 256 pixels before
+   it's saved, so it's small enough to store. */
+CC.start(function () {
   'use strict';
   const account = CC.auth.require();
   if (!account) return;
@@ -62,21 +63,30 @@
   form.elements.bio.addEventListener('input', changed);
   form.elements.birthday.addEventListener('change', changed);
 
-  // Center-crops the image to a square and redraws it at PHOTO_PX as a JPEG.
+  // Center-crops an image (or a video frame) to a square and redraws it at PHOTO_PX as a
+  // JPEG. mirror flips it left to right, to match a mirrored camera preview.
+  function square(source, width, height, mirror) {
+    const side = Math.min(width, height);
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = PHOTO_PX;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, PHOTO_PX, PHOTO_PX);
+    if (mirror) {
+      ctx.translate(PHOTO_PX, 0);
+      ctx.scale(-1, 1);
+    }
+    ctx.drawImage(source, (width - side) / 2, (height - side) / 2, side, side, 0, 0, PHOTO_PX, PHOTO_PX);
+    return canvas.toDataURL('image/jpeg', 0.85);
+  }
+
   function shrink(file) {
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(file);
       const img = new Image();
       img.onload = () => {
-        const side = Math.min(img.naturalWidth, img.naturalHeight);
-        const canvas = document.createElement('canvas');
-        canvas.width = canvas.height = PHOTO_PX;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(0, 0, PHOTO_PX, PHOTO_PX);
-        ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, PHOTO_PX, PHOTO_PX);
         URL.revokeObjectURL(url);
-        resolve(canvas.toDataURL('image/jpeg', 0.85));
+        resolve(square(img, img.naturalWidth, img.naturalHeight, false));
       };
       img.onerror = () => {
         URL.revokeObjectURL(url);
@@ -100,19 +110,117 @@
     }
     try {
       photo = await shrink(file);
+      hint.textContent = file.name;
+      closeCamera();
       changed();
     } catch (e) {
       error.textContent = 'That file couldn’t be opened as a picture.';
     }
   });
 
+  // ---------- camera ----------
+
+  const hint = document.getElementById('photo-hint');
+  const takeBtn = document.getElementById('take-photo');
+  const camBox = document.getElementById('camera');
+  const video = document.getElementById('camera-video');
+  const captureBtn = document.getElementById('capture');
+  let stream = null;
+
+  // Why the camera couldn't start, in words.
+  function cameraProblem(e) {
+    switch (e && e.name) {
+      case 'NotAllowedError':
+      case 'SecurityError':
+        return 'Camera access was blocked. To take a picture, allow the camera for this site (usually from the icon in the address bar), or choose a file with the paperclip.';
+      case 'NotFoundError':
+      case 'OverconstrainedError':
+        return 'No camera was found. Choose a file with the paperclip instead.';
+      case 'NotReadableError':
+        return 'The camera is being used by another app. Close it and try again.';
+      default:
+        return 'The camera couldn’t be started. Choose a file with the paperclip instead.';
+    }
+  }
+
+  async function openCamera() {
+    error.textContent = '';
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      error.textContent = window.isSecureContext
+        ? 'This browser can’t use a camera. Choose a file with the paperclip instead.'
+        : 'The camera only works on a secure (https://) page or on localhost. Choose a file with the paperclip instead.';
+      return;
+    }
+    takeBtn.disabled = true;
+    hint.textContent = 'Allow camera access when your browser asks…';
+    try {
+      // This is where the browser asks for permission.
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+    } catch (e) {
+      takeBtn.disabled = false;
+      hint.textContent = 'Choose a file or take a picture';
+      error.textContent = cameraProblem(e);
+      return;
+    }
+    video.srcObject = stream;
+    camBox.hidden = false;
+    hint.textContent = 'Camera on';
+    captureBtn.disabled = true; // until the first frame arrives
+    try {
+      await video.play();
+    } catch (e) {
+      /* autoplay is muted, so this rarely fails; the frame check below still works */
+    }
+    if (!video.videoWidth) await new Promise((r) => video.addEventListener('loadedmetadata', r, { once: true }));
+    captureBtn.disabled = false;
+    captureBtn.focus();
+  }
+
+  function closeCamera() {
+    if (stream) stream.getTracks().forEach((t) => t.stop()); // turns the camera light off
+    stream = null;
+    video.srcObject = null;
+    if (!camBox.hidden) {
+      camBox.hidden = true;
+      takeBtn.disabled = false;
+      if (hint.textContent === 'Camera on') hint.textContent = 'Choose a file or take a picture';
+    }
+  }
+
+  takeBtn.addEventListener('click', openCamera);
+  captureBtn.addEventListener('click', () => {
+    if (!video.videoWidth) return;
+    // The preview is mirrored like a mirror, so the picture is too: what you see is what you get.
+    photo = square(video, video.videoWidth, video.videoHeight, true);
+    closeCamera();
+    hint.textContent = 'Picture taken';
+    changed();
+    takeBtn.focus();
+  });
+  document.getElementById('camera-cancel').addEventListener('click', () => {
+    closeCamera();
+    takeBtn.focus();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && stream) {
+      closeCamera();
+      takeBtn.focus();
+    }
+  });
+  // Never leave the camera on after leaving the page.
+  window.addEventListener('pagehide', closeCamera);
+
   document.getElementById('remove-photo').addEventListener('click', () => {
     photo = '';
     form.elements.photo.value = '';
+    hint.textContent = 'Choose a file or take a picture';
     changed();
   });
 
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     error.textContent = '';
     const birthday = form.elements.birthday.value;
@@ -121,9 +229,17 @@
       return;
     }
     const next = { bio: form.elements.bio.value.trim(), birthday, photo };
-    if (!CC.profiles.save(account.username, next)) {
-      error.textContent = 'Could not save. The browser’s storage may be full; try a smaller picture.';
+    const btn = form.querySelector('button[type=submit]');
+    btn.disabled = true;
+    saved.textContent = 'Saving…';
+    try {
+      await CC.profiles.save(account.username, next);
+    } catch (err) {
+      saved.textContent = '';
+      error.textContent = err.message;
       return;
+    } finally {
+      btn.disabled = false;
     }
     profile = CC.profiles.get(account.username);
     saved.textContent = 'Saved.';
@@ -133,4 +249,4 @@
   });
 
   renderCard();
-})();
+});

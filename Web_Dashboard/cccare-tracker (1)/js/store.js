@@ -1,6 +1,14 @@
-/* Accounts, the class roster, saved sessions and the live session shared with the
-   patient's screen. Everything is kept in this browser (sessionStorage for the sign-in,
-   localStorage for data) so the prototype runs without a server. */
+/* Accounts, the class roster, saved sessions, profiles and the live session shared with
+   the patient's screen.
+
+   Two places the data can live, chosen in js/config.js:
+   - this browser (the default): sessionStorage for the sign-in, localStorage for data,
+     so the prototype runs without a server;
+   - a backend, through the REST API in API.md. Sign-in is then checked by the server.
+
+   Either way the pages read from in-memory caches, so reads stay simple and synchronous.
+   CC.start(fn) loads the caches (from the backend, if there is one) and then runs the
+   page. Writes update the cache straight away and return a promise for the save. */
 (function () {
   'use strict';
   const CC = (window.CC = window.CC || {});
@@ -18,6 +26,7 @@
     live: 'cccare.live',
     accounts: 'cccare.accounts',
     profiles: 'cccare.profiles',
+    api: 'cccare.api',
   };
 
   // Sample accounts from the brief. Hard-coded passwords are only acceptable in a
@@ -45,6 +54,72 @@
     }
   }
 
+  // ---------- backend ----------
+
+  // The API address: ?api= in the page address (remembered), then js/config.js.
+  function apiBase() {
+    const given = CC.util.param('api');
+    try {
+      if (given === 'off') localStorage.removeItem(KEY.api);
+      else if (given) localStorage.setItem(KEY.api, given);
+      const saved = localStorage.getItem(KEY.api);
+      if (saved) return saved.replace(/\/+$/, '');
+    } catch (e) {
+      /* storage blocked: fall through to the config file */
+    }
+    const base = CC.CONFIG && CC.CONFIG.apiBase;
+    return base ? String(base).replace(/\/+$/, '') : '';
+  }
+  const API = apiBase();
+
+  // Calls the backend. Resolves with the parsed JSON, or rejects with an Error whose
+  // message is the server's { "error": "..." } text when it sends one.
+  async function api(method, path, body, opts) {
+    const headers = { Accept: 'application/json' };
+    const signedIn = read(sessionStorage, KEY.auth, null);
+    if (signedIn && signedIn.token) headers.Authorization = 'Bearer ' + signedIn.token;
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    let res;
+    try {
+      res = await fetch(API + path, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        keepalive: !!(opts && opts.keepalive),
+        cache: 'no-store',
+      });
+    } catch (e) {
+      throw new Error(`Can’t reach the server at ${API}.`);
+    }
+    let data = null;
+    const text = await res.text();
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        throw new Error(`The server sent something that isn’t JSON (HTTP ${res.status}).`);
+      }
+    }
+    if (res.status === 401 && path !== '/auth/signin') {
+      // The sign-in has expired or the server forgot it: sign in again.
+      sessionStorage.removeItem(KEY.auth);
+      if (!/index\.html$|\/$/.test(location.pathname)) location.replace('index.html');
+    }
+    if (!res.ok) {
+      const err = new Error((data && data.error) || `The server answered HTTP ${res.status}.`);
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  }
+
+  const backend = {
+    // The API address, or '' when data is kept in this browser.
+    url: API,
+    enabled: !!API,
+    request: api,
+  };
+
   // ---------- participants ----------
 
   const pid = (n) => 'P' + pad2(n);
@@ -68,30 +143,43 @@
     return allAccounts().find((a) => a.username.toLowerCase() === u) || null;
   };
 
-  function startSession(account) {
+  function startSession(account, token) {
     const signedIn = { username: account.username, role: account.role, participantId: account.participantId || null };
-    write(sessionStorage, KEY.auth, signedIn);
+    write(sessionStorage, KEY.auth, token ? Object.assign({ token }, signedIn) : signedIn);
     return signedIn;
+  }
+
+  // Sign-in and sign-up through the backend. Resolves with { account } or { error }.
+  async function remoteAuth(path, body) {
+    try {
+      const data = await api('POST', path, body);
+      if (!data || !data.account || !data.token) return { error: 'The server’s reply was missing the account.' };
+      return { account: startSession(data.account, data.token) };
+    } catch (e) {
+      return { error: e.message };
+    }
   }
 
   const USERNAME = /^[A-Za-z0-9._-]{3,24}$/;
 
   const auth = {
-    // Returns { account } on success, or null. The account decides whether this is an
-    // instructor or a patient.
-    signIn(username, password) {
+    // Resolves with { account } on success, or { error }. The account decides whether this
+    // is an instructor or a patient.
+    async signIn(username, password) {
+      if (backend.enabled) return remoteAuth('/auth/signin', { username: String(username || '').trim(), password });
       const account = findAccount(username);
-      if (!account || account.password !== password) return null;
+      if (!account || account.password !== password) return { error: 'That username and password don’t match an account.' };
       return { account: startSession(account) };
     },
-    // Makes a new account and signs in with it. Returns { account } or { error }.
+    // Makes a new account and signs in with it. Resolves with { account } or { error }.
     // A patient account is linked to the first block number no other account uses.
-    signUp(username, password, role) {
+    async signUp(username, password, role) {
       const name = String(username || '').trim();
       if (!USERNAME.test(name)) return { error: 'Usernames are 3 to 24 letters, numbers, dots, dashes or underscores.' };
       if (findAccount(name)) return { error: 'That username is taken. Choose another.' };
       if (String(password || '').length < 4) return { error: 'Use a password of at least 4 characters.' };
       if (role !== 'instructor' && role !== 'patient') return { error: 'Choose instructor or patient.' };
+      if (backend.enabled) return remoteAuth('/auth/signup', { username: name, password, role });
       const account = { username: name, password, role };
       if (role === 'patient') {
         const used = new Set(allAccounts().map((a) => a.participantId).filter(Boolean));
@@ -132,6 +220,7 @@
       return a;
     },
     signOut() {
+      if (backend.enabled) api('POST', '/auth/signout', {}, { keepalive: true }).catch(() => {});
       sessionStorage.removeItem(KEY.auth);
       location.href = 'index.html';
     },
@@ -171,15 +260,20 @@
     };
   }
 
+  // Fills in the full roster of MAX places from what was saved. Saved places are matched
+  // by id (a backend may only send some of them), or by position for older saved data.
+  function fullRoster(saved) {
+    const list = Array.isArray(saved) ? saved.filter((s) => s && typeof s === 'object') : [];
+    return defaultRoster().map((slot, i) => {
+      const given = list.find((s) => s.id === slot.id) || (list[i] && !list[i].id ? list[i] : null);
+      return given ? cleanSlot(given, slot) : slot;
+    });
+  }
+
   let rosterCache = null;
   const roster = {
     all() {
-      if (!rosterCache) {
-        const saved = read(localStorage, KEY.roster, null);
-        rosterCache = defaultRoster().map((slot, i) =>
-          Array.isArray(saved) && saved[i] && typeof saved[i] === 'object' ? cleanSlot(saved[i], slot) : slot
-        );
-      }
+      if (!rosterCache) rosterCache = fullRoster(read(localStorage, KEY.roster, null));
       return deepCopy(rosterCache);
     },
     get(id) {
@@ -192,7 +286,9 @@
         const given = list.find((s) => s.id === slot.id);
         return given ? cleanSlot(given, slot) : current.find((s) => s.id === slot.id);
       });
-      write(localStorage, KEY.roster, rosterCache);
+      // Resolves when saved; rejects with the reason if the backend couldn't save it.
+      if (backend.enabled) return api('PUT', '/roster', rosterCache);
+      return write(localStorage, KEY.roster, rosterCache) ? Promise.resolve() : Promise.reject(new Error('Could not save in this browser.'));
     },
   };
 
@@ -328,19 +424,21 @@
     s && typeof s.id === 'string' && Array.isArray(s.participants) &&
     s.participants.every((p) => p && Array.isArray(p.exercises));
 
+  const sortSessions = (list) => (Array.isArray(list) ? list : [])
+    .filter(validSession)
+    .sort((a, b) => new Date(a.startedAt) - new Date(b.startedAt));
+
   let sessionCache = null;
   function loadSessions() {
     if (sessionCache) return sessionCache;
+    if (backend.enabled) return (sessionCache = []); // filled in by CC.start
     if (localStorage.getItem(KEY.version) !== DATA_VERSION) {
       // Saved data from an older version can't be shown, so start again with sample data.
       write(localStorage, KEY.sessions, sampleSessions());
       localStorage.removeItem(KEY.live);
       localStorage.setItem(KEY.version, DATA_VERSION);
     }
-    const list = read(localStorage, KEY.sessions, []);
-    sessionCache = (Array.isArray(list) ? list : [])
-      .filter(validSession)
-      .sort((a, b) => new Date(a.startedAt) - new Date(b.startedAt));
+    sessionCache = sortSessions(read(localStorage, KEY.sessions, []));
     return sessionCache;
   }
 
@@ -356,10 +454,12 @@
       const list = loadSessions();
       return list[list.length - 1] || null;
     },
+    // Resolves when saved; rejects with the reason if it couldn't be.
     add(session) {
       const list = loadSessions().concat([session]);
       sessionCache = list;
-      return write(localStorage, KEY.sessions, list);
+      if (backend.enabled) return api('POST', '/sessions', session);
+      return write(localStorage, KEY.sessions, list) ? Promise.resolve() : Promise.reject(new Error('Could not save in this browser. Its storage may be full.'));
     },
     // Every session this participant was in, oldest first.
     historyFor(id) {
@@ -377,14 +477,75 @@
   // While a session runs, the instructor's page writes every participant's block here
   // twice a second. Patient pages in the same browser read it to show their own block.
   // state is 'live', 'ended' (results saved) or 'abandoned' (the instructor left the page).
+  // With a backend this also works across devices: the instructor's page sends each update
+  // to the server, and patient pages ask the server for it once a second.
+  const validLive = (v) => (v && typeof v === 'object' && typeof v.id === 'string' ? v : null);
+  let liveCache = null;
+  let liveSending = false;
+  let liveQueued = null;
+
+  async function sendLive(state, keepalive) {
+    if (keepalive) return api('PUT', '/live', state, { keepalive: true }).catch(() => {});
+    // Only one update in flight at a time; if more come meanwhile, send the newest next.
+    if (liveSending) {
+      liveQueued = state;
+      return null;
+    }
+    liveSending = true;
+    try {
+      await api('PUT', '/live', state);
+    } catch (e) {
+      console.warn('Live update not sent:', e.message);
+    } finally {
+      liveSending = false;
+    }
+    if (liveQueued) {
+      const next = liveQueued;
+      liveQueued = null;
+      return sendLive(next);
+    }
+    return null;
+  }
+
   const live = {
     key: KEY.live,
     read() {
-      const v = read(localStorage, KEY.live, null);
-      return v && typeof v === 'object' && typeof v.id === 'string' ? v : null;
+      return backend.enabled ? liveCache : validLive(read(localStorage, KEY.live, null));
     },
-    write(state) {
-      return write(localStorage, KEY.live, state);
+    // opts.final: the last update before leaving the page (sent even as the page closes).
+    write(state, opts) {
+      if (!backend.enabled) return Promise.resolve(write(localStorage, KEY.live, state));
+      return sendLive(state, !!(opts && opts.final));
+    },
+    // Calls onChange(state) about once a second, and as soon as another tab in this
+    // browser changes it. Patient pages use this to follow the instructor.
+    watch(onChange) {
+      if (!backend.enabled) {
+        window.addEventListener('storage', (e) => {
+          if (e.key === KEY.live) onChange(live.read());
+        });
+        setInterval(() => onChange(live.read()), 1000);
+        onChange(live.read());
+        return;
+      }
+      let busy = false;
+      const poll = async () => {
+        if (busy) return;
+        busy = true;
+        try {
+          const v = validLive(await api('GET', '/live'));
+          // The server says how old the update is, so clocks on different devices don't matter.
+          if (v && Number.isFinite(v.ageMs)) v.updatedAt = Date.now() - v.ageMs;
+          liveCache = v;
+        } catch (e) {
+          console.warn('Live update not received:', e.message);
+        } finally {
+          busy = false;
+        }
+        onChange(liveCache);
+      };
+      setInterval(poll, 1000);
+      poll();
     },
   };
 
@@ -404,17 +565,27 @@
     return { bio: String(p.bio || '').slice(0, BIO_MAX), birthday, photo };
   }
 
+  const profileCache = {};
   const profiles = {
     BIO_MAX,
     get(username) {
+      if (backend.enabled) return cleanProfile(profileCache[profileKey(username)]);
       const all = read(localStorage, KEY.profiles, {});
       return cleanProfile(all && typeof all === 'object' ? all[profileKey(username)] : null);
     },
+    // Resolves when saved; rejects with the reason if it couldn't be.
     save(username, profile) {
+      const clean = cleanProfile(profile);
+      if (backend.enabled) {
+        profileCache[profileKey(username)] = clean;
+        return api('PUT', '/profiles/' + encodeURIComponent(username), clean);
+      }
       const all = read(localStorage, KEY.profiles, {});
       const next = all && typeof all === 'object' && !Array.isArray(all) ? all : {};
-      next[profileKey(username)] = cleanProfile(profile);
-      return write(localStorage, KEY.profiles, next);
+      next[profileKey(username)] = clean;
+      return write(localStorage, KEY.profiles, next)
+        ? Promise.resolve()
+        : Promise.reject(new Error('Could not save. The browser’s storage may be full; try a smaller picture.'));
     },
   };
 
@@ -435,12 +606,60 @@
       return sessionStorage.getItem(KEY.feed);
     },
     // Deletes saved sessions and names, then the sample history is generated again.
+    // With a backend, the server replaces its sessions with the sample history.
     reset() {
       [KEY.roster, KEY.sessions, KEY.version, KEY.lastCount, KEY.live].forEach((k) => localStorage.removeItem(k));
       rosterCache = null;
       sessionCache = null;
+      if (backend.enabled) return api('POST', '/reset', { sessions: sampleSessions() });
+      return Promise.resolve();
     },
   };
+
+  // ---------- page start ----------
+
+  // Loads what the signed-in person can see from the backend into the caches. With data
+  // kept in this browser there is nothing to load.
+  async function load() {
+    if (!backend.enabled) return;
+    const me = auth.current();
+    if (!me) return; // the sign-in page: nothing to load yet
+    const [rosterData, sessionData, profile] = await Promise.all([
+      api('GET', '/roster'),
+      api('GET', '/sessions'),
+      api('GET', '/profiles/' + encodeURIComponent(me.username)).catch(() => null),
+    ]);
+    rosterCache = fullRoster(rosterData);
+    sessionCache = sortSessions(sessionData);
+    if (profile) profileCache[profileKey(me.username)] = profile;
+  }
+
+  // Runs a page once its data is loaded. If the backend can't be reached, says so on the
+  // page instead. opts.load = false skips loading (the sign-in page needs no data).
+  function start(page, opts) {
+    const loading = opts && opts.load === false ? Promise.resolve() : load();
+    loading.then(page, (e) => {
+      if (e.status === 401) {
+        // The sign-in expired: api() has already signed out; start again from sign-in.
+        location.replace('index.html');
+        return;
+      }
+      const box = document.createElement('section');
+      box.className = 'server-error';
+      box.setAttribute('role', 'alert');
+      const h = document.createElement('h1');
+      h.textContent = 'Can’t load the data';
+      const p = document.createElement('p');
+      p.textContent = `${e.message} Check that the server is running, then reload the page.`;
+      const p2 = document.createElement('p');
+      p2.className = 'mono muted';
+      p2.textContent = `Server: ${API}. To use this browser’s storage instead, add ?api=off to the address.`;
+      box.append(h, p, p2);
+      const main = document.querySelector('main');
+      if (main) main.replaceChildren(box);
+      else document.body.prepend(box);
+    });
+  }
 
   CC.MAX_PARTICIPANTS = MAX;
   CC.slotNumber = slotNumber;
@@ -452,4 +671,6 @@
   CC.live = live;
   CC.store = store;
   CC.profiles = profiles;
+  CC.backend = backend;
+  CC.start = start;
 })();
