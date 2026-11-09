@@ -755,16 +755,40 @@ select option { background: var(--paper); color: var(--ink); }
 .ended-early {
   max-width: 1000px;
   margin-bottom: 36px;
-  padding: 18px 22px;
-  background: var(--ink);
-  color: var(--paper);
-  outline: 3px solid var(--alarm);
-  outline-offset: -3px;
+  padding: 16px 18px;
+  background: var(--fill);
+  color: var(--ink);
 }
-.ended-early h2 { font-size: 18px; margin-bottom: 6px; }
-.ended-early ul { margin-top: 10px; display: grid; gap: 4px; font-size: 14px; }
+.ended-early-head { display: flex; align-items: center; gap: 16px; }
+.ended-early-head > div { flex: 1; min-width: 0; }
+.ended-early h2 { font-size: 18px; margin-bottom: 4px; }
+.ended-early-toggle {
+  appearance: none;
+  border: 0;
+  margin: 0;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: var(--fill-2);
+  color: var(--ink);
+  cursor: pointer;
+}
+.ended-early-toggle:hover { background: var(--fill-3); }
+.ended-early-toggle:focus-visible, .ended-early-toggle[aria-expanded="true"] { background: var(--ink); color: var(--paper); }
+.ended-early-toggle .arrow {
+  width: 12px;
+  height: 7px;
+  background: currentColor;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  transition: transform 0.2s ease;
+}
+.ended-early-toggle[aria-expanded="true"] .arrow { transform: rotate(180deg); }
+.ended-early-list { margin-top: 14px; display: grid; gap: 4px; font-size: 14px; }
+.ended-early-list li { padding: 7px 10px; background: var(--paper); }
 .ended-early a { font-weight: 700; }
-.ended-early a:hover, .ended-early a:focus-visible { background: var(--paper); color: var(--ink); }
 
 /* ---------- night mode ---------- */
 
@@ -827,7 +851,7 @@ select option { background: var(--paper); color: var(--ink); }
 
 @media (prefers-reduced-motion: reduce) {
   .rec { animation: none; }
-  .ring-arc, .bar i { transition: none; }
+  .ring-arc, .bar i, .ended-early-toggle .arrow { transition: none; }
   .issues.alert { animation: none; }
 }
 .wk-note { margin: 2px 0 4px; }
