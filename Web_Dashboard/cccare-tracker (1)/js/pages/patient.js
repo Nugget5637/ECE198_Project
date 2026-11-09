@@ -24,7 +24,57 @@
 
   const block = CC.ui.block(slot, { audience: 'patient', size: 'large' });
   block.message('Waiting for your instructor to start the session.');
-  document.getElementById('slot').append(block.el);
+  const cheerEl = h('p', { class: 'cheer', hidden: true });
+  document.getElementById('slot').append(cheerEl, block.el);
+
+  // ---------- encouragement ----------
+  // A short message above the block that changes every so often while the session runs.
+  // It suits the moment: starting, working, resting, nearly done, finished or paused.
+  const CHEER_MS = 18 * 1000;
+  const CHEERS = {
+    start: ['Let’s get moving. You’ve got this!', 'Nice and steady to start.', 'Take a breath, then begin when you’re ready.'],
+    work: ['You’re doing great. Keep it up!', 'Strong work. Every rep counts.', 'Nice rhythm. Keep going!', 'Look at you go!',
+      'Steady and smooth. Well done.', 'You’re getting stronger with every session.', 'Great effort. Stay with it!'],
+    good: ['Beautiful form. Keep it just like that!', 'Excellent reps. Really well done!', 'Your form is looking great today.'],
+    rest: ['Nice set! Enjoy your rest.', 'Good work. Shake it out and breathe.', 'Well earned rest. Next set soon.'],
+    almost: ['Almost there. Finish strong!', 'Just a little more. You can do it!', 'The end is in sight. Keep going!'],
+    done: ['Workout complete. Fantastic job today!', 'You did it! Be proud of that.', 'All done. Great work today!'],
+    paused: ['Your instructor paused the session. Take a breather.', 'Short break. Relax your shoulders and breathe.'],
+  };
+  let cheerKind = '';
+  let cheerAt = 0;
+  let cheerLast = '';
+
+  function cheerKindFor(snap, paused) {
+    if (paused) return 'paused';
+    if (snap.head === 'done') return 'done';
+    if (!snap.repsDone) return 'start';
+    if (snap.resting) return 'rest';
+    if (snap.repsPlanned && snap.repsDone / snap.repsPlanned >= 0.75) return 'almost';
+    if (snap.color != null && snap.color >= 80) return 'good';
+    return 'work';
+  }
+
+  function cheer(snap, paused) {
+    const kind = cheerKindFor(snap, paused);
+    const now = Date.now();
+    if (kind === cheerKind && now - cheerAt < CHEER_MS) return;
+    const options = CHEERS[kind].filter((t) => t !== cheerLast);
+    const first = CC.util.firstName(snap.name || slot.name);
+    const base = options[Math.floor(Math.random() * options.length)];
+    // Now and then, use their first name.
+    const text = first && kind !== 'paused' && Math.random() < 0.35
+      ? `${first}, ${base.charAt(0).toLowerCase()}${base.slice(1)}` : base;
+    cheerKind = kind;
+    cheerAt = now;
+    cheerLast = base;
+    cheerEl.textContent = text;
+    cheerEl.hidden = false;
+  }
+  function hideCheer() {
+    cheerEl.hidden = true;
+    cheerKind = '';
+  }
 
   const last = CC.sessions.latestFor(pid);
   if (last) {
@@ -58,10 +108,13 @@
         planEl.textContent = `Today’s workout: ${CC.describeWorkout(snap.exercises, true).toLowerCase()}.`;
       }
       if (snap.name) nameEl.textContent = snap.name; // the instructor may have named them
-      setState('Your session is running.', 'live');
+      if (live.paused) setState('Your instructor has paused the session.', 'paused');
+      else setState('Your session is running.', 'live');
       block.update(snap);
+      cheer(snap, !!live.paused);
       return;
     }
+    hideCheer();
 
     if (live && live.state === 'ended' && watching && live.id === watching) {
       setState('Session over. Opening your results…', 'ended');

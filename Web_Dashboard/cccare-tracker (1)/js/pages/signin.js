@@ -1,23 +1,31 @@
-/* Sign-in page: choose Instructor or Patient, then enter that account's details. */
+/* Sign-in page. Existing users sign in with their username and password; the account
+   decides whether they go to the instructor or patient pages. First-time users press
+   Sign up, pick a username and password, and choose instructor or patient. */
 (function () {
   'use strict';
   const { h } = CC.util;
-  const form = document.getElementById('signin');
+  const signin = document.getElementById('signin');
+  const signup = document.getElementById('signup');
   const error = document.getElementById('error');
-  const title = document.getElementById('form-title');
-  const buttons = document.querySelectorAll('.role');
-  const NAMES = { instructor: 'Instructor', patient: 'Patient' };
-  let role = null;
+  const signupError = document.getElementById('signup-error');
+  const title = document.getElementById('page-title');
+  const switchText = document.getElementById('switch-text');
+  const switchBtn = document.getElementById('switch-btn');
 
-  function choose(next) {
-    role = next;
-    buttons.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.role === role)));
-    title.textContent = `${NAMES[role]} sign-in`;
+  function show(mode) {
+    const up = mode === 'signup';
+    signin.hidden = up;
+    signup.hidden = !up;
+    title.textContent = up ? 'Sign up' : 'Sign in';
+    document.title = `${up ? 'Sign up' : 'Sign in'} · CCCARE exercise tracking`;
+    switchText.textContent = up ? 'Already have an account?' : 'First time here?';
+    switchBtn.textContent = up ? 'Sign in' : 'Sign up';
     error.textContent = '';
-    form.hidden = false;
-    form.elements.username.focus();
+    signupError.textContent = '';
+    (up ? signup : signin).elements.username.focus();
   }
-  buttons.forEach((b) => b.addEventListener('click', () => choose(b.dataset.role)));
+  switchBtn.addEventListener('click', () => show(signup.hidden ? 'signup' : 'signin'));
+  if (location.hash === '#signup') show('signup');
 
   const current = CC.auth.current();
   if (current) {
@@ -29,24 +37,40 @@
       ', or sign in with another account.');
   }
 
-  form.addEventListener('submit', (e) => {
+  signin.addEventListener('submit', (e) => {
     e.preventDefault();
-    if (!role) return;
-    const username = form.elements.username.value;
-    const password = form.elements.password.value;
+    const username = signin.elements.username.value;
+    const password = signin.elements.password.value;
     if (!username.trim() || !password) {
       error.textContent = 'Enter your username and password.';
       return;
     }
-    const outcome = CC.auth.signIn(username, password, role);
-    if (outcome && outcome.account) {
+    const outcome = CC.auth.signIn(username, password);
+    if (outcome) {
       location.href = CC.auth.home(outcome.account);
       return;
     }
-    error.textContent = outcome && outcome.wrongRole
-      ? `That’s ${outcome.wrongRole === 'instructor' ? 'an instructor' : 'a patient'} account. Choose ${NAMES[outcome.wrongRole]} above.`
-      : 'That username and password don’t match an account.';
-    form.elements.password.value = '';
-    form.elements.password.focus();
+    error.textContent = 'That username and password don’t match an account.';
+    signin.elements.password.value = '';
+    signin.elements.password.focus();
+  });
+
+  signup.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const f = signup.elements;
+    const role = f.role.value;
+    let problem = '';
+    if (!f.username.value.trim() || !f.password.value) problem = 'Choose a username and password.';
+    else if (f.password.value !== f.confirm.value) problem = 'The two passwords don’t match.';
+    else if (!role) problem = 'Choose whether this account is for an instructor or a patient.';
+    if (!problem) {
+      const outcome = CC.auth.signUp(f.username.value, f.password.value, role);
+      if (outcome.account) {
+        location.href = CC.auth.home(outcome.account);
+        return;
+      }
+      problem = outcome.error;
+    }
+    signupError.textContent = problem;
   });
 })();

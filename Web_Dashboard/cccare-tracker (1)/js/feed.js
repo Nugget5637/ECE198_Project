@@ -138,9 +138,14 @@
         p.state = 'done';
         return;
       }
+      // Rests roughly as long as the instructor set for the exercise just done. Never less
+      // than the gap the tracker needs to see a new set starting.
       p.state = 'rest';
-      p.nextAt = now + ((22 + rnd() * 30) * 1000) / speed;
+      const rest = Math.max(CC.LIMITS.setGapSeconds + 1, CC.restOf(w) * (0.8 + rnd() * 0.4));
+      p.nextAt = now + (rest * 1000) / speed;
     }
+
+    let pausedAt = null;
 
     return {
       label: speed === 1 ? 'simulated' : `simulated ×${speed}`,
@@ -160,6 +165,26 @@
         clearInterval(timer);
         timer = null;
       },
+      // Everyone freezes where they are; on resume their next rep is pushed back by the pause.
+      pause() {
+        if (pausedAt != null) return;
+        pausedAt = Date.now();
+        clearInterval(timer);
+        timer = null;
+      },
+      resume() {
+        if (pausedAt == null) return;
+        const shift = Date.now() - pausedAt;
+        pausedAt = null;
+        people.forEach((p) => {
+          p.nextAt += shift;
+          p.tickAt += shift;
+        });
+        timer = setInterval(() => {
+          const now = Date.now();
+          people.forEach((p) => step(p, now));
+        }, 100);
+      },
     };
   }
 
@@ -171,6 +196,7 @@
     let stopped = false;
     let retries = 0;
     let retryTimer = null;
+    let paused = false;
 
     const send = (msg) => {
       if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
@@ -200,6 +226,7 @@
         } catch (e) {
           return;
         }
+        if (paused) return; // nothing counts while the instructor has paused the session
         (Array.isArray(data) ? data : [data]).forEach((raw) => {
           const ev = normalize(raw);
           if (ev && wanted.has(ev.pid)) emit(ev);
@@ -221,6 +248,14 @@
         clearTimeout(retryTimer);
         send({ type: 'session', state: 'end' });
         if (ws) ws.close();
+      },
+      pause() {
+        paused = true;
+        send({ type: 'session', state: 'pause' });
+      },
+      resume() {
+        paused = false;
+        send({ type: 'session', state: 'resume' });
       },
     };
   }

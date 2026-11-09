@@ -35,14 +35,15 @@ Sample accounts (the username is not case-sensitive, the password is):
 | Instructor | `InsU` | `InsP` |
 | Patient | `PatU` | `PatP` (linked to participant 01) |
 
-On the sign-in page, choose **Instructor** or **Patient** first, then enter that account's details. The details have to match the button you chose.
+On the sign-in page, enter a username and password; the account decides whether you go to the instructor or patient pages. First-time users press **Sign up**, choose a username and password, and pick **Instructor** or **Patient**. A new patient account is linked to the first block number no other account uses, and that block's name on the roster is set to the username until the instructor changes it. New accounts are kept in this browser's `localStorage`, passwords included, so this is only for the prototype.
 
 ## Pages
 
 | File | Who | What it does |
 | --- | --- | --- |
-| `index.html` | everyone | Sign in, as instructor or patient. |
-| `instructor.html` | instructor | Set up the class (1 to 30 participants, a name and a full workout for each), then the live dashboard. **Edit** on a row opens a workout editor; **Copy to all** applies one person's workout to everyone. |
+| `index.html` | everyone | Sign in, or sign up as an instructor or patient. |
+| `instructor.html` | instructor | Set up the class (1 to 30 participants, a name and a full workout for each), then the live dashboard. Each row's workout is a dropdown. **Edit** opens the workout editor: sets, reps and rest (15 to 300 seconds) per exercise, and an exercise library of square cards with an animation of each exercise (muscles worked in red), grouped and filterable by muscle group. **Copy to all** applies one person's workout to everyone. During a session, **Pause** freezes the clock, rest countdowns and rep counting for everyone until **Resume**. |
+| `profile.html` | both | Your profile: picture (cropped and shrunk to 256 px), birthday and a biography of up to 500 characters. Linked from the header on every page. |
 | `patient.html` | patient | One large block for the signed-in patient. It can't be started by the patient: it goes live on its own when the instructor starts the class, and opens the patient's results when the instructor ends it. |
 | `session-results.html` | instructor | Everyone's results for a session. A row opens that patient's results. |
 | `patient-results.html` | both | One patient's results: overall success, a row per exercise, what went wrong, and the **Progress** button. Patients can only open their own results. |
@@ -62,7 +63,11 @@ exercise success = adherence × average quality
 
 **Workout success** combines the exercises, weighted by how many reps each one plans. For example, 2 sets of 10 done as 10 and 10 at 85% quality scores 85%. Done as 10 and 5, or as 10 and 15, at 85% quality it scores 64%. Stopping a set short and going past it cost the same, because both came up in the brief. To change the rule, edit the scoring functions in `js/score.js`.
 
-**The wheel** fills clockwise from 12 o'clock with success, and its colour follows that same percentage: red at 0%, through orange and yellow, to green at 100%. The percentage is also printed in the middle for anyone who can't tell the colours apart. Each exercise row has a small bar coloured the same way.
+**The wheel** fills clockwise from 12 o'clock with success. Its colour, from red through orange and yellow to green, is the plain average of how well each exercise is going, so it doesn't just track progress. During a session only exercises already reached count, and only finished sets count toward adherence, so a good start shows green while the wheel is still nearly empty. On results pages it is the average of the exercises' success. The percentage is also printed in the middle for anyone who can't tell the colours apart. Each exercise row has a small bar coloured by its own success.
+
+**Session results** put a coloured box next to each person's reps, sets finished, quality and exertion, red (poor) to green (good). Reps lose points for going over as well as stopping short; exertion is judged by its peak, green up to 5 of 10 and red at 9 or more. The rules are `statScore` in `js/ui.js`.
+
+**The patient screen** shows an encouraging message above the block that changes every 18 seconds or so, suited to the moment (starting, working, good form, resting, nearly done, finished, paused). The messages are `CHEERS` in `js/pages/patient.js`.
 
 **The strip along the bottom** turns black with a pulsing red outline when something needs attention, and shows the message only (no topic label):
 
@@ -103,7 +108,7 @@ The server sends JSON messages, one at a time or several in an array:
 - `faults` on its own sends live form feedback between reps.
 - Fault codes are listed per exercise in `js/exercises.js`. An unknown code is shown as plain text.
 
-When a session starts, the dashboard sends `{"type":"session","state":"start","participants":["P01",…],"workouts":{…}}`, where `workouts` maps each station to its planned exercises, sets and reps. It sends `{"type":"session","state":"end"}` when the session ends. Invalid messages are ignored.
+When a session starts, the dashboard sends `{"type":"session","state":"start","participants":["P01",…],"workouts":{…}}`, where `workouts` maps each station to its planned exercises, sets, reps and rest seconds. It sends `{"type":"session","state":"pause"}` and `{"type":"session","state":"resume"}` when the instructor pauses (events that arrive while paused are ignored), and `{"type":"session","state":"end"}` when the session ends. Invalid messages are ignored.
 
 A minimal test server in Python (`pip install websockets`). This is an untested sketch:
 
@@ -143,12 +148,15 @@ If the site is served over `https://`, browsers block plain `ws://` connections,
 ## Files
 
 ```
-index.html               sign in (instructor / patient buttons)
+index.html               sign in and sign up
 instructor.html          set-up, workout editor and live dashboard
 patient.html             patient's live block, driven by the instructor
 session-results.html     instructor: everyone's results
 patient-results.html     one patient's results and progress graphs
+profile.html             picture, birthday and biography
 css/style.css            all styling
+img/exercises/*.gif      exercise animations (muscles worked in red)
+tools/make_exercise_gifs.py  draws those animations (needs Pillow)
 js/util.js               helpers (dates, durations, random numbers, safe element building)
 js/exercises.js          exercises, fault messages, cues, sample workouts
 js/score.js              workout scoring, thresholds, live tracker

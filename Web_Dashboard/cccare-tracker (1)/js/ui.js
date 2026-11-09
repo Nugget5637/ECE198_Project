@@ -5,7 +5,8 @@
   const { h, svg, fill, clamp, pad2, fmtDate, fmtExertion, plural } = CC.util;
 
   // A percentage as a colour: 0% red, 50% yellow, 100% green, blending smoothly in between.
-  // Every wheel and bar is coloured by the same percentage it shows.
+  // Bars are coloured by the percentage they show. Wheels are filled by success but
+  // coloured by how well each exercise is going on average (see ring.set).
   function percentColor(p) {
     if (p == null) return 'transparent';
     return `hsl(${Math.round(clamp(p, 0, 100) * 1.2)}, 72%, 41%)`;
@@ -25,20 +26,53 @@
       arc);
     return {
       el,
-      set(value) {
+      // value sets how far the wheel is filled. colorValue, when given, sets its colour;
+      // otherwise the colour follows value.
+      set(value, colorValue) {
         const v = clamp(value || 0, 0, 100);
         arc.style.strokeDashoffset = (c * (1 - v / 100)).toFixed(2) + 'px';
-        arc.style.stroke = percentColor(v);
+        arc.style.stroke = percentColor(colorValue === undefined ? v : colorValue == null ? 0 : colorValue);
       },
     };
   }
 
   // Small static wheel for tables.
-  function miniRing(value) {
+  function miniRing(value, colorValue) {
     const r = ring(30, 4);
     r.el.classList.add('ring-static');
-    r.set(value);
+    r.set(value, colorValue);
     return r.el;
+  }
+
+  // ---------- coloured stat boxes, red (poor) to green (good) ----------
+
+  // Each stat as 0–100, where 100 is best.
+  const statScore = {
+    // Reps done against reps planned. Going over counts against it as much as stopping short.
+    reps(done, planned) {
+      if (!planned) return null;
+      return clamp(Math.round(100 - (Math.abs(done - planned) / planned) * 100), 0, 100);
+    },
+    sets(done, planned) {
+      return planned ? clamp(Math.round((done / planned) * 100), 0, 100) : null;
+    },
+    quality(q) {
+      return q == null ? null : clamp(q, 0, 100);
+    },
+    // Exertion is judged by the hardest moment: green up to 5 of 10, red at 9 and above.
+    exertion(peak) {
+      return peak == null ? null : clamp(Math.round(((9 - peak) / 4) * 100), 0, 100);
+    },
+  };
+
+  // A small square in a score's colour. Grey when there's no score.
+  function statBox(score, label) {
+    return h('i', {
+      class: 'stat-box' + (score == null ? ' stat-box-none' : ''),
+      style: score == null ? null : `background:${percentColor(score)}`,
+      title: label ? `${label}: ${score == null ? 'no data' : score + ' out of 100'}` : null,
+      'aria-hidden': 'true',
+    });
   }
 
   // Thin bar filled to a percentage, in that percentage's colour.
@@ -143,7 +177,7 @@
     return {
       el,
       update(snap) {
-        wheel.set(snap.success);
+        wheel.set(snap.success, snap.color === undefined ? null : snap.color);
         pct.textContent = snap.success + '%';
         total.textContent = `${snap.repsDone}/${snap.repsPlanned} reps`;
         quality.textContent = snap.quality == null ? '—' : snap.quality + '%';
@@ -153,6 +187,7 @@
         renderExercises(snap.exercises);
         renderIssues(snap.issues, snap.status);
         el.classList.toggle('needs-attention', snap.issues.length > 0);
+        el.classList.toggle('paused', !!snap.paused);
       },
       message(text) {
         lastKey = 'msg:' + text;
@@ -237,8 +272,24 @@
   }
 
   // Fills in the parts of the page header and footer that depend on who is signed in.
+  // Round profile picture, or the first letter of the username when there isn't one.
+  function avatar(username, photo, size) {
+    const el = h('span', { class: 'avatar', style: `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.45)}px`, 'aria-hidden': 'true' });
+    if (photo) el.append(h('img', { src: photo, alt: '' }));
+    else el.textContent = String(username || '?').charAt(0).toUpperCase();
+    return el;
+  }
+
   function frame(account) {
-    document.querySelectorAll('[data-who]').forEach((el) => (el.textContent = `${account.role} · ${account.username}`));
+    document.querySelectorAll('[data-who]').forEach((el) => {
+      el.textContent = `${account.role} · ${account.username}`;
+      // Profile link with the picture, just before the name.
+      if (!el.parentNode.querySelector('.profile-link')) {
+        const profile = CC.profiles.get(account.username);
+        el.before(h('a', { class: 'profile-link', href: 'profile.html' },
+          avatar(account.username, profile.photo, 24), 'Profile'));
+      }
+    });
     document.querySelectorAll('[data-today]').forEach((el) => (el.textContent = fmtDate(new Date())));
     document.querySelectorAll('[data-signout]').forEach((el) =>
       el.addEventListener('click', (e) => {
@@ -255,5 +306,8 @@
       }));
   }
 
-  CC.ui = { percentColor, ring, miniRing, bar, swatches, block, faultList, whatWentWrong, confirmButton, frame };
+  CC.ui = {
+    percentColor, ring, miniRing, bar, swatches, statScore, statBox, avatar,
+    block, faultList, whatWentWrong, confirmButton, frame,
+  };
 })();

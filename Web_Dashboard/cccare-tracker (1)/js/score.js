@@ -7,7 +7,8 @@
   const LIMITS = {
     exertionHigh: 8, // 0–10 scale. 8 and above is "very hard".
     idleSeconds: 25, // flag anyone mid-set (or not started) with no rep for this long
-    restSeconds: 45, // planned rest after a finished set; the no-rep flag waits this much longer
+    // Rest after a finished set is set per exercise by the instructor (CC.restOf); the
+    // no-rep flag waits that long plus idleSeconds.
     setGapSeconds: 15, // a pause at least this long ends a set, so the next rep starts the next set
     faultHoldSeconds: 10, // a form fault stays on screen this long after it was seen
     recentReps: 5, // the quality figure on each block is the average of the last five reps
@@ -45,6 +46,14 @@
     return den ? Math.round(num / den) : 0;
   }
 
+  // Colour of a saved result's wheel, 0–100: the plain average of each exercise's success.
+  // The wheel's fill still shows overall success; its colour shows how well each exercise
+  // went on average, so one long exercise doesn't outweigh the others.
+  function colorScore(list) {
+    if (!list || !list.length) return null;
+    return Math.round(mean(list.map((e) => exerciseValue(e))));
+  }
+
   // ---------- live tracker ----------
 
   class Tracker {
@@ -57,6 +66,7 @@
         exercise: w.exercise,
         sets: w.sets,
         reps: w.reps,
+        rest: CC.restOf(w),
         done: new Array(w.sets).fill(0),
         extra: 0,
         qualities: [],
@@ -143,9 +153,39 @@
       const last = this.plan.length - 1;
       return this.reps > 0 && this.ex === last && this.setFinished() && this.set >= this.plan[last].sets - 1;
     }
+    // Rest after each set of the current exercise, as the instructor set it.
+    restSeconds() {
+      return this.current().rest;
+    }
     restLeft(now) {
       if (!this.reps || !this.setFinished() || this.complete()) return 0;
-      return Math.max(0, LIMITS.restSeconds - this.seconds(this.lastRepAt, now));
+      return Math.max(0, this.restSeconds() - this.seconds(this.lastRepAt, now));
+    }
+
+    // How well each exercise is going so far, averaged over the exercises, 0–100, or null
+    // before the first rep. Unlike success it doesn't count reps not done yet: only sets
+    // already finished (or passed) count toward adherence, so a good start shows green.
+    performance() {
+      const values = [];
+      this.plan.forEach((e, i) => {
+        const started = e.qualities.length > 0;
+        if (!started && i >= this.ex) return; // not reached yet
+        if (!started) {
+          values.push(0); // passed without doing any of it
+          return;
+        }
+        let off = e.extra;
+        let count = 0;
+        e.done.forEach((d, k) => {
+          const inProgress = i === this.ex && k === this.set && d < e.reps;
+          if (inProgress || (d === 0 && i >= this.ex)) return;
+          off += Math.abs(d - e.reps);
+          count += 1;
+        });
+        const adh = count ? clamp(1 - off / (count * e.reps), 0, 1) : 1;
+        values.push(adh * mean(e.qualities));
+      });
+      return values.length ? Math.round(mean(values)) : null;
     }
 
     // Short state for the corner of the block.
@@ -201,7 +241,7 @@
       }
       if (!finished) {
         const idle = this.seconds(this.lastRepAt, now);
-        const allowed = this.reps && this.setFinished() ? LIMITS.restSeconds + LIMITS.idleSeconds : LIMITS.idleSeconds;
+        const allowed = this.reps && this.setFinished() ? this.restSeconds() + LIMITS.idleSeconds : LIMITS.idleSeconds;
         if (idle >= allowed) list.push({ message: `No reps for ${fmtDuration(idle)}`, cue: 'Carry on when you’re ready.' });
       }
       return list;
@@ -232,6 +272,8 @@
         id: this.id,
         name: this.name,
         success: this.success(),
+        color: this.performance(),
+        resting: this.restLeft(now) > 0,
         repsDone: this.reps,
         repsPlanned: this.plan.reduce((n, e) => n + planned(e), 0),
         quality: this.recent.length ? Math.round(mean(this.recent)) : null,
@@ -270,6 +312,6 @@
   }
 
   CC.LIMITS = LIMITS;
-  CC.score = { planned, repsDone, adherence, exerciseSuccess, workoutSuccess };
+  CC.score = { planned, repsDone, adherence, exerciseSuccess, workoutSuccess, colorScore };
   CC.Tracker = Tracker;
 })();

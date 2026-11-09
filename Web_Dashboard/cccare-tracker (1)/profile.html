@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Profile · CCCARE exercise tracking</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23111'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="index.html" id="home">CCCARE <span class="brand-sub">exercise tracking</span></a>
+    <p class="who"><span class="mono" data-who></span><a href="index.html" data-signout>Sign out</a></p>
+  </header>
+
+  <main class="profile">
+    <nav class="crumbs mono"><a href="index.html" id="back">Back</a></nav>
+
+    <section class="profile-card" aria-label="Your profile">
+      <div id="card-photo"></div>
+      <div>
+        <h1 id="card-name"></h1>
+        <p class="mono muted" id="card-meta"></p>
+        <p class="profile-bio" id="card-bio"></p>
+      </div>
+    </section>
+
+    <form class="profile-form" id="profile" novalidate>
+      <h2>Edit profile</h2>
+
+      <label for="photo">Profile picture</label>
+      <div class="photo-row">
+        <input id="photo" name="photo" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+        <button type="button" class="btn btn-light" id="remove-photo">Remove picture</button>
+      </div>
+
+      <label for="birthday">Birthday</label>
+      <input id="birthday" name="birthday" type="date">
+
+      <label for="bio">Biography</label>
+      <textarea id="bio" name="bio" rows="5" maxlength="500"></textarea>
+      <p class="mono muted" id="bio-count"></p>
+
+      <p class="form-error" id="error" role="alert"></p>
+      <div class="profile-actions">
+        <button class="btn" type="submit">Save profile</button>
+        <span class="mono" id="saved" role="status"></span>
+      </div>
+    </form>
+  </main>
+
+  <footer class="foot mono">
+    <p>Prototype. Your profile is saved in this browser only.</p>
+  </footer>
+
+  <script src="js/util.js"></script>
+  <script src="js/exercises.js"></script>
+  <script src="js/score.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/pages/profile.js"></script>
+</body>
+</html>

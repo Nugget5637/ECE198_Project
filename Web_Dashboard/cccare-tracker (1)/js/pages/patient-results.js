@@ -50,48 +50,60 @@
 
   // ---------- summary ----------
 
+  const { statScore, statBox } = CC.ui;
   const wheel = CC.ui.ring(240, 16);
-  requestAnimationFrame(() => requestAnimationFrame(() => wheel.set(result.success)));
-  const completion = result.repsPlanned ? Math.round((result.repsDone / result.repsPlanned) * 100) : 0;
+  requestAnimationFrame(() => requestAnimationFrame(() => wheel.set(result.success, score.colorScore(result.exercises))));
+
+  // One big number per tile, a one- or two-word label, and a box coloured red to green.
+  const tile = (value, label, boxScore, sub) => h('div', { class: 'tile' },
+    h('dt', null, statBox(boxScore, label), label),
+    h('dd', null, value, sub ? h('small', null, sub) : null));
 
   const summary = h('section', { class: 'result' },
     h('div', { class: 'wheel' }, wheel.el,
       h('div', { class: 'wheel-text' },
         h('span', { class: 'wheel-pct' }, result.success + '%'),
         h('span', { class: 'wheel-reps' }, 'success'))),
-    h('dl', { class: 'facts' },
-      h('dt', null, 'workout'), h('dd', null, `${plural(result.exercises.length, 'exercise')}, ${result.setsDone} of ${result.setsPlanned} sets finished`),
-      h('dt', null, 'reps'), h('dd', null, `${result.repsDone} of ${result.repsPlanned} (${completion}% of the plan)`),
-      h('dt', null, 'quality'), h('dd', null, result.quality == null ? '—' : `${result.quality}% on average`),
-      h('dt', null, 'exertion'), h('dd', null, result.exertionAvg == null ? '—'
-        : `${fmtExertion(result.exertionAvg)} of 10 on average, ${fmtExertion(result.exertionPeak)} at the hardest`)));
+    h('dl', { class: 'tiles' },
+      tile(`${result.repsDone}/${result.repsPlanned}`, 'reps', statScore.reps(result.repsDone, result.repsPlanned)),
+      tile(`${result.setsDone}/${result.setsPlanned}`, 'sets', statScore.sets(result.setsDone, result.setsPlanned)),
+      tile(result.quality == null ? '—' : result.quality + '%', 'form', statScore.quality(result.quality)),
+      tile(result.exertionAvg == null ? '—' : fmtExertion(result.exertionAvg), 'effort', statScore.exertion(result.exertionPeak),
+        result.exertionAvg == null ? null : `/10 · peak ${fmtExertion(result.exertionPeak)}`)));
 
   // ---------- each exercise ----------
 
   const exercises = h('section', { class: 'exercises' },
     h('h2', null, 'Exercises'),
-    h('div', { class: 'table-wrap' },
-      h('table', { class: 'ex-table' },
-        h('thead', null, h('tr', null,
-          ['Exercise', 'Plan', 'Reps in each set', 'Reps', 'Quality', 'Success'].map((t) => h('th', { scope: 'col' }, t)))),
-        h('tbody', null, result.exercises.map((e) => h('tr', null,
-          h('td', null, CC.exerciseName(e.exercise)),
-          h('td', { class: 'mono' }, `${e.sets} × ${e.reps}`),
-          h('td', { class: 'mono' }, e.done.join(' · ') + (e.extra ? ` + ${e.extra} extra` : '')),
-          h('td', { class: 'mono' }, `${score.repsDone(e)}/${score.planned(e)}`),
-          h('td', { class: 'mono' }, e.quality == null ? '—' : e.quality + '%'),
-          h('td', null, h('span', { class: 'cell-success' }, CC.ui.miniRing(e.success), e.success + '%'))))))));
+    h('ul', { class: 'ex-cards' }, result.exercises.map((e) => {
+      const ex = CC.EXERCISES[e.exercise];
+      return h('li', { class: 'ex-result' },
+        ex && ex.gif ? h('img', { class: 'ex-result-gif', src: ex.gif, alt: '', width: 64, height: 64, loading: 'lazy' }) : null,
+        h('div', { class: 'ex-result-head' },
+          h('h3', null, CC.exerciseName(e.exercise)),
+          h('span', { class: 'cell-success' }, CC.ui.miniRing(e.success), e.success + '%')),
+        h('dl', { class: 'ex-result-stats' },
+          h('div', null, h('dt', null, 'reps'), h('dd', null, statBox(statScore.reps(score.repsDone(e), score.planned(e)), 'Reps'), `${score.repsDone(e)}/${score.planned(e)}`)),
+          h('div', null, h('dt', null, 'form'), h('dd', null, statBox(statScore.quality(e.quality), 'Form'), e.quality == null ? '—' : e.quality + '%')),
+          h('div', null, h('dt', null, 'each set'), h('dd', null, e.done.join(' · ') + (e.extra ? ` +${e.extra}` : '')))));
+    })));
 
   // ---------- what went wrong ----------
 
+  // The few most important items show; the rest fold away behind "Show N more".
+  const TOP = 4;
   const items = CC.ui.whatWentWrong(result).map((it) =>
     h('li', null,
       h('span', null, it.message),
       it.detail ? h('span', { class: 'count' }, it.detail) : h('span'),
       isPatient && it.cue ? h('p', { class: 'cue' }, it.cue) : null));
+  const more = items.slice(TOP);
   const wrong = h('section', { class: 'wrong' },
-    h('h2', null, 'What went wrong'),
-    items.length ? h('ul', null, items) : h('p', { class: 'muted' }, 'Nothing was flagged this session.'));
+    h('h2', null, 'To work on'),
+    items.length ? h('ul', null, items.slice(0, TOP)) : h('p', { class: 'muted' }, 'Nothing was flagged this session.'),
+    more.length ? h('details', { class: 'wrong-more' },
+      h('summary', { class: 'mono' }, `Show ${more.length} more`),
+      h('ul', null, more)) : null);
 
   // ---------- progress ----------
 
@@ -183,9 +195,10 @@
 
   // ---------- how it's worked out ----------
 
-  const how = h('section', { class: 'how' },
-    h('h2', null, 'How success is worked out'),
+  const how = h('details', { class: 'how' },
+    h('summary', null, 'How success is worked out'),
     h('p', null,
+      'The wheel fills to the overall success. Its colour is the average of the exercises’ scores, from red to green. ',
       'Each exercise scores the share of its planned reps that were done as planned, multiplied by the average movement quality of its reps. ',
       'Stopping a set short and going past it both count against it. ',
       'The overall score combines the exercises, weighted by how many reps each one plans. ',

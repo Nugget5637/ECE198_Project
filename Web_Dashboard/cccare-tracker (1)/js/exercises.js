@@ -94,10 +94,30 @@
     ],
   ];
 
-  // Largest workout the set-up screen allows.
-  CC.WORKOUT_LIMITS = { exercises: 8, sets: 10, reps: 100 };
+  // Muscle groups, in the order the exercise library shows them.
+  CC.MUSCLE_GROUPS = { legs: 'Legs', chest: 'Chest', arms: 'Arms', shoulders: 'Shoulders' };
+
+  // Which group each exercise is listed under, the muscles shown in red in its animation,
+  // and the animation itself (drawn by tools/make_exercise_gifs.py).
+  const TARGETS = {
+    sit_to_stand: { group: 'legs', muscles: ['Quads', 'Glutes'] },
+    mini_squat: { group: 'legs', muscles: ['Quads', 'Glutes', 'Hamstrings'] },
+    heel_raise: { group: 'legs', muscles: ['Calves'] },
+    wall_pushup: { group: 'chest', muscles: ['Chest', 'Triceps'] },
+    bicep_curl: { group: 'arms', muscles: ['Biceps'] },
+    arm_raise: { group: 'shoulders', muscles: ['Front shoulders'] },
+  };
+  for (const [code, t] of Object.entries(TARGETS)) {
+    Object.assign(CC.EXERCISES[code], t, { gif: `img/exercises/${code}.gif` });
+  }
+
+  // Largest workout the set-up screen allows. Rest is in seconds, after each set.
+  CC.WORKOUT_LIMITS = { exercises: 8, sets: 10, reps: 100, restMin: 15, restMax: 300, rest: 45 };
 
   CC.exerciseName = (code) => (CC.EXERCISES[code] ? CC.EXERCISES[code].name : String(code));
+
+  // Rest after each set of a workout entry, in seconds. Older saved workouts have none.
+  CC.restOf = (w) => (w && Number.isFinite(w.rest) ? w.rest : CC.WORKOUT_LIMITS.rest);
 
   // "Sit-to-stand 2×10, Wall push-up 2×8". With long = true: "Sit-to-stand, 2 sets of 10".
   CC.describeWorkout = function (workout, long) {
