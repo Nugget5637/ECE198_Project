@@ -660,7 +660,10 @@ select option { background: var(--paper); color: var(--ink); }
   font: 12px/1.35 var(--mono);
   white-space: nowrap;
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
 }
+.chart-tip.on { opacity: 1; transition-duration: 0.12s; }
 .chart-tip b { font: 700 18px/1.1 var(--sans); }
 .chart-open { color: var(--inverse-muted); }
 
@@ -722,6 +725,21 @@ select option { background: var(--paper); color: var(--ink); }
   line-height: 1;
 }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+/* nickname "Tree Gaming": an outline that cycles through the rainbow */
+@keyframes rainbow-ring {
+  0% { box-shadow: 0 0 0 var(--ring, 3px) #ff2a2a; }
+  17% { box-shadow: 0 0 0 var(--ring, 3px) #ff9f1a; }
+  33% { box-shadow: 0 0 0 var(--ring, 3px) #f5e300; }
+  50% { box-shadow: 0 0 0 var(--ring, 3px) #2bd94a; }
+  67% { box-shadow: 0 0 0 var(--ring, 3px) #1aa3ff; }
+  83% { box-shadow: 0 0 0 var(--ring, 3px) #8a3bff; }
+  100% { box-shadow: 0 0 0 var(--ring, 3px) #ff2a2a; }
+}
+.avatar-rainbow { --ring: max(2px, 0.06em); animation: rainbow-ring 3s linear infinite; }
+.profile-card .avatar-rainbow { --ring: 5px; }
+/* clip the photo inside the ring, not the ring itself */
+.avatar-rainbow img { border-radius: 50%; }
 
 .profile { max-width: 760px; }
 .profile-card { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 24px 32px; align-items: center; }
@@ -1002,6 +1020,8 @@ body > main { animation: page-in 0.38s var(--ease-out) both; }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .avatar-rainbow { animation-duration: 12s; }
+  .chart-tip { transition: none; }
   body > main, .form-in, .live.entering .block, .live.entering .livebar, .live.entering .live-sub,
   .live.ending .block, .block.went-live, .results-table tbody tr, .tiles .tile, .ex-cards .ex-result { animation: none; }
   .page-leaving body > main, .page-leaving .foot { opacity: 1; transform: none; transition: none; }

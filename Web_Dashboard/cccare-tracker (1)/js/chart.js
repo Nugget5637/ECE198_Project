@@ -119,8 +119,35 @@
       if (p.href && !p.current) location.href = p.href;
     }
 
+    // The statistics box shows while the cursor is over the graph (or the graph has keyboard
+    // focus), and fades away when it leaves. A tap on a touch screen shows it for a few seconds.
+    let hovering = false;
+    let touchTimer = null;
+    const setTip = () => tip.classList.toggle('on', hovering || wrap.matches(':focus-visible'));
+    wrap.addEventListener('pointerenter', () => {
+      hovering = true;
+      setTip();
+    });
+    wrap.addEventListener('pointerleave', (e) => {
+      if (e.pointerType === 'touch') return; // a finger lifting isn't the cursor leaving
+      hovering = false;
+      setTip();
+    });
+    wrap.addEventListener('focus', setTip);
+    wrap.addEventListener('blur', setTip);
+
     wrap.addEventListener('pointermove', (e) => show(nearest(e.clientX), false));
-    wrap.addEventListener('pointerdown', (e) => show(nearest(e.clientX), false));
+    wrap.addEventListener('pointerdown', (e) => {
+      show(nearest(e.clientX), false);
+      if (e.pointerType !== 'touch') return;
+      hovering = true;
+      setTip();
+      clearTimeout(touchTimer);
+      touchTimer = setTimeout(() => {
+        hovering = false;
+        setTip();
+      }, 3000);
+    });
     wrap.addEventListener('click', (e) => open(nearest(e.clientX)));
     wrap.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -132,6 +159,7 @@
       } else if (e.key === 'Enter') {
         open(selected);
       }
+      setTip();
     });
 
     // Redraws on resize until the graph is replaced (for example by another exercise's graph).

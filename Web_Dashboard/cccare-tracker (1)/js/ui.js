@@ -359,8 +359,13 @@
 
   // Fills in the parts of the page header and footer that depend on who is signed in.
   // Round profile picture, or the first letter of the username when there isn't one.
-  function avatar(username, photo, size) {
-    const el = h('span', { class: 'avatar', style: `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.45)}px`, 'aria-hidden': 'true' });
+  // A little secret: the nickname "Tree Gaming" gives the picture a rainbow outline.
+  const rainbowNick = (nickname) => String(nickname || '').replace(/\s+/g, ' ').trim().toLowerCase() === 'tree gaming';
+
+  // opts.nickname: the person's nickname, for the rainbow outline.
+  function avatar(username, photo, size, opts) {
+    const rainbow = rainbowNick(opts && opts.nickname);
+    const el = h('span', { class: 'avatar' + (rainbow ? ' avatar-rainbow' : ''), style: `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.45)}px`, 'aria-hidden': 'true' });
     if (photo) el.append(h('img', { src: photo, alt: '' }));
     else el.textContent = String(username || '?').charAt(0).toUpperCase();
     return el;
@@ -380,7 +385,7 @@
       if (!el.parentNode.querySelector('.profile-link')) {
         const profile = CC.profiles.get(account.username);
         el.before(h('a', { class: 'profile-link', href: 'profile.html' },
-          avatar(CC.profiles.nameFor(account), profile.photo, 24), 'Profile'));
+          avatar(CC.profiles.nameFor(account), profile.photo, 24, { nickname: profile.nickname }), 'Profile'));
       }
     });
     document.querySelectorAll('[data-today]').forEach((el) => (el.textContent = fmtDate(new Date())));
@@ -402,7 +407,7 @@
   }
 
   CC.ui = {
-    percentColor, ring, miniRing, bar, swatches, statScore, statBox, avatar, stoppedText,
+    percentColor, ring, miniRing, bar, swatches, statScore, statBox, avatar, rainbowNick, stoppedText,
     block, faultList, whatWentWrong, confirmButton, frame,
   };
 })();
