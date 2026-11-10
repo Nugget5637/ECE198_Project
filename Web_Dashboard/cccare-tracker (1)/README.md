@@ -109,7 +109,11 @@ The thresholds are in `LIMITS` in `js/score.js`. The exercises, their faults and
 
 **Ending early.** If the instructor ends the session before someone has finished, their result only counts the exercises they reached, and the sets of the current exercise up to the one they were on; exercises they never got to aren't counted against them. The session results page then opens with an alert saying the session was ended early and where each unfinished person stopped (exercise, set and reps in that set). That patient's results page shows the same note.
 
+**Nickname.** On the profile page, anyone can set a nickname of up to 30 characters. It's shown on their own screens instead of their username (the header, and for patients their live screen and results), and the encouraging messages use it. The username still shows on the profile, as @username.
+
 **Profile picture.** On the profile page, the paperclip chooses a picture file. The camera button asks the browser for camera access, shows a mirrored preview with the square that will be used, and takes the picture. Browsers only allow the camera on `https://` pages and `localhost`; elsewhere, and when access is blocked, the page says so and the paperclip still works. The camera turns off as soon as the picture is taken, cancelled or the page is left.
+
+**Motion.** Pages ease in, and fade out before the next one opens (for example after signing in). The sign-in and sign-up forms slide in when switching between them. Starting a session fades the set-up away and brings the blocks in one after another; ending it folds the blocks away before the results come in row by row. Dropdowns and panels (the workout lists, the workout editor, "How success is worked out", the ended-early details, Progress) slide open and shut. Switching night mode spreads the new colours out in a circle from the button, in browsers that support view transitions (Chrome and Edge); others fade the colours over. Everything moves instantly instead for anyone whose system is set to reduce motion. The code is `js/motion.js` and the motion section of `css/style.css`.
 
 **Look.** Text is set in DM Sans (bundled in `css/fonts/`, SIL Open Font License). The moon button in the top right switches night mode; the choice is remembered in this browser. The GitHub button next to it opens the repository.
 
@@ -216,6 +220,7 @@ profile.html             picture, birthday and biography
 css/style.css            all styling
 img/exercises/*.gif      exercise animations (muscles worked in red)
 tools/make_exercise_gifs.py  renders those animations in 3D (needs numpy and Pillow; about 3 minutes per exercise on 8 cores; --preview for quick stills)
+js/motion.js             page fades, sliding dropdowns and panels, the night-mode reveal
 js/theme.js              night mode and the GitHub button (loaded in each page's head)
 js/util.js               helpers (dates, durations, random numbers, safe element building)
 js/exercises.js          exercises, fault messages, cues, sample workouts

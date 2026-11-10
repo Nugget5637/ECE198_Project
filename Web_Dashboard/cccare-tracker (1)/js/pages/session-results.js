@@ -39,8 +39,8 @@ CC.start(function () {
   // A number with a coloured box in front of it, red (poor) to green (good).
   const stat = (score, label, text) => h('td', null, h('span', { class: 'cell-stat mono' }, statBox(score, label), text));
 
-  const rows = people.map((p) => {
-    const tr = h('tr', null,
+  const rows = people.map((p, i) => {
+    const tr = h('tr', { style: `--i:${i}` },
       h('td', { class: 'mono' }, pad2(CC.slotNumber(p.id))),
       h('td', null, h('a', { href: link(p) }, CC.displayName(p))),
       h('td', null, h('span', { class: 'cell-success' }, CC.ui.miniRing(p.success, CC.score.colorScore(p.exercises)), p.success + '%')),
@@ -53,7 +53,7 @@ CC.start(function () {
     tr.title = CC.describeWorkout(p.exercises);
     tr.addEventListener('click', (e) => {
       if (e.target.closest('a')) return;
-      location.href = link(p);
+      CC.go(link(p));
     });
     return tr;
   });
@@ -72,8 +72,8 @@ CC.start(function () {
       'aria-label': 'Show where each person stopped', title: 'Show where each person stopped',
     }, h('span', { class: 'arrow', 'aria-hidden': 'true' }));
     toggle.addEventListener('click', () => {
-      const open = list.hidden;
-      list.hidden = !open;
+      const open = toggle.getAttribute('aria-expanded') !== 'true';
+      CC.motion.slide(list, open);
       toggle.setAttribute('aria-expanded', String(open));
       const label = open ? 'Hide where each person stopped' : 'Show where each person stopped';
       toggle.setAttribute('aria-label', label);

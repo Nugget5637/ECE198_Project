@@ -53,7 +53,7 @@ CC.start(function () {
   function workoutDropdown() {
     const label = h('span', { class: 'wk-drop-label' });
     const list = h('ol', { class: 'wk-drop-list' });
-    const el = h('details', { class: 'wk-drop' }, h('summary', null, label), list);
+    const el = h('details', { class: 'wk-drop pop' }, h('summary', null, label), list);
     el.addEventListener('toggle', () => {
       if (el.open) closeDropdowns(el);
     });
@@ -213,11 +213,20 @@ CC.start(function () {
       }
     }
 
-    function toggle(open) {
-      editorRow.hidden = !open;
+    // The editor slides open below the row, and slides shut before the row is hidden.
+    async function toggle(open) {
       editBtn.setAttribute('aria-expanded', String(open));
       editBtn.textContent = open ? 'Close' : 'Edit';
-      if (open) renderEditor();
+      if (open) {
+        editorRow.hidden = false;
+        renderEditor();
+        editor.hidden = true;
+        await CC.motion.slide(editor, true);
+      } else {
+        await CC.motion.slide(editor, false);
+        if (editBtn.getAttribute('aria-expanded') === 'false') editorRow.hidden = true;
+        editor.hidden = false;
+      }
     }
     editBtn.addEventListener('click', () => toggle(editorRow.hidden));
 
@@ -243,7 +252,18 @@ CC.start(function () {
   document.getElementById('start').addEventListener('click', () => {
     CC.roster.save(roster).catch((e) => alert(`The names and workouts weren’t saved: ${e.message}`));
     CC.store.setLastCount(count);
-    startLive(CC.roster.all().slice(0, count));
+    // The set-up fades away before the live view comes in.
+    const startBtn = document.getElementById('start');
+    startBtn.disabled = true;
+    const slots = CC.roster.all().slice(0, count);
+    const fade = CC.motion.reduced() || !setupEl.animate ? null
+      : setupEl.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(-10px)' }],
+        { duration: 220, easing: 'ease-in', fill: 'forwards' });
+    (fade ? fade.finished : Promise.resolve()).then(() => {
+      if (fade) fade.cancel();
+      startBtn.disabled = false;
+      startLive(slots);
+    });
   });
 
   function renderRecent() {
@@ -286,7 +306,11 @@ CC.start(function () {
     const titleText = document.getElementById('live-word');
 
     document.getElementById('legend').append(' 0% ', CC.ui.swatches(), ' 100%');
+    // Each block comes in a moment after the one before (--i sets the delay).
+    [...blocks.values()].forEach((b, i) => b.el.style.setProperty('--i', String(i)));
     grid.replaceChildren(...[...blocks.values()].map((b) => b.el));
+    liveEl.classList.add('entering');
+    setTimeout(() => liveEl.classList.remove('entering'), 600 + slots.length * 30 + 400);
     grid.classList.toggle('grid-dense', slots.length > 16);
     document.getElementById('live-count').textContent = slots.length;
     setupEl.hidden = true;
@@ -423,7 +447,10 @@ CC.start(function () {
       // Tells patient pages the results are saved, so they can open them.
       await CC.live.write({ state: 'ended', id: sessionId, updatedAt: endedAt });
       window.removeEventListener('beforeunload', guard);
-      location.href = 'session-results.html?s=' + encodeURIComponent(sessionId);
+      // The blocks fold away, then the page fades to the results.
+      liveEl.classList.add('ending');
+      if (!CC.motion.reduced()) await CC.motion.wait(320);
+      CC.go('session-results.html?s=' + encodeURIComponent(sessionId));
     });
   }
 });

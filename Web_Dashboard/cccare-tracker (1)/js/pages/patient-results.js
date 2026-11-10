@@ -28,7 +28,8 @@ CC.start(function () {
     return;
   }
 
-  const name = CC.displayName(result);
+  // A patient sees their own nickname, if they've set one.
+  const name = (isPatient && CC.profiles.get(account.username).nickname) || CC.displayName(result);
   const self = (sid) => `patient-results.html?s=${encodeURIComponent(sid)}` + (isPatient ? '' : `&p=${encodeURIComponent(pid)}`);
   document.title = `${name}, ${fmtDate(session.startedAt)} · CCCARE exercise tracking`;
 
@@ -179,16 +180,19 @@ CC.start(function () {
   }
 
   button.addEventListener('click', () => {
-    const open = panel.hidden;
-    panel.hidden = !open;
+    const open = button.getAttribute('aria-expanded') !== 'true';
     button.setAttribute('aria-expanded', String(open));
     sign.textContent = open ? '−' : '+';
     if (open && !drawn) {
+      // Drawn while visible (the graph needs its width), then slid open from closed.
       drawn = true;
+      panel.hidden = false;
       fill(panel, codes.length > 1 ? filters : null, statsBox, chartBox, note);
       renderFilters();
       drawProgress();
+      panel.hidden = true;
     }
+    CC.motion.slide(panel, open);
   });
 
   const progress = h('section', { class: 'progress' }, button, panel);

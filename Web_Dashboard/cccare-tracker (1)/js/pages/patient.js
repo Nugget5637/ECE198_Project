@@ -19,11 +19,18 @@ CC.start(function () {
   const stateEl = document.getElementById('state');
   const lastEl = document.getElementById('last');
 
-  nameEl.textContent = CC.displayName(slot);
+  // Their own nickname, if they've set one, over the name the instructor gave them.
+  const nickname = CC.profiles.get(account.username).nickname;
+  nameEl.textContent = nickname || CC.displayName(slot);
   planEl.textContent = `Today’s workout: ${CC.describeWorkout(slot.workout, true).toLowerCase()}.`;
 
-  const block = CC.ui.block(slot, { audience: 'patient', size: 'large' });
+  const block = CC.ui.block(slot, { audience: 'patient', size: 'large', name: nickname || null });
   block.message('Waiting for your instructor to start the session.');
+  // The "went live" animation is removed when it finishes, so it can't hold back the
+  // emergency outline's pulse later.
+  block.el.addEventListener('animationend', (e) => {
+    if (e.animationName === 'went-live') block.el.classList.remove('went-live');
+  });
   const cheerEl = h('p', { class: 'cheer', hidden: true });
   document.getElementById('slot').append(cheerEl, block.el);
 
@@ -60,7 +67,7 @@ CC.start(function () {
     const now = Date.now();
     if (kind === cheerKind && now - cheerAt < CHEER_MS) return;
     const options = CHEERS[kind].filter((t) => t !== cheerLast);
-    const first = CC.util.firstName(snap.name || slot.name);
+    const first = CC.util.firstName(nickname || snap.name || slot.name);
     const base = options[Math.floor(Math.random() * options.length)];
     // Now and then, use their first name.
     const text = first && kind !== 'paused' && Math.random() < 0.35
@@ -104,9 +111,13 @@ CC.start(function () {
       }
       if (watching !== live.id) {
         watching = live.id;
+        // The block comes alive as the session starts.
+        block.el.classList.remove('went-live');
+        void block.el.offsetWidth;
+        block.el.classList.add('went-live');
         planEl.textContent = `Today’s workout: ${CC.describeWorkout(snap.exercises, true).toLowerCase()}.`;
       }
-      if (snap.name) nameEl.textContent = snap.name; // the instructor may have named them
+      if (snap.name && !nickname) nameEl.textContent = snap.name; // the instructor may have named them
       if (live.paused) setState('Your instructor has paused the session.', 'paused');
       else setState('Your session is running.', 'live');
       block.update(snap);
@@ -119,7 +130,7 @@ CC.start(function () {
 
     if (live && live.state === 'ended' && watching && live.id === watching) {
       setState('Session over. Opening your results…', 'ended');
-      location.href = 'patient-results.html?s=' + encodeURIComponent(live.id);
+      CC.go('patient-results.html?s=' + encodeURIComponent(live.id));
       return;
     }
 

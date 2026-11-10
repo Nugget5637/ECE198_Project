@@ -222,7 +222,8 @@
     signOut() {
       if (backend.enabled) api('POST', '/auth/signout', {}, { keepalive: true }).catch(() => {});
       sessionStorage.removeItem(KEY.auth);
-      location.href = 'index.html';
+      if (CC.go) CC.go('index.html');
+      else location.href = 'index.html';
     },
   };
 
@@ -554,6 +555,7 @@
   // Photos are shrunk before saving (see profile.js) so they fit in localStorage.
 
   const BIO_MAX = 500;
+  const NICK_MAX = 30;
   const PHOTO_MAX = 200000; // characters of data URL
   const profileKey = (username) => String(username || '').trim().toLowerCase();
 
@@ -562,12 +564,19 @@
     const birthday = /^\d{4}-\d{2}-\d{2}$/.test(p.birthday || '') ? p.birthday : '';
     const photo = typeof p.photo === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(p.photo) && p.photo.length <= PHOTO_MAX
       ? p.photo : '';
-    return { bio: String(p.bio || '').slice(0, BIO_MAX), birthday, photo };
+    const nickname = String(p.nickname || '').replace(/\s+/g, ' ').trim().slice(0, NICK_MAX);
+    return { nickname, bio: String(p.bio || '').slice(0, BIO_MAX), birthday, photo };
   }
 
   const profileCache = {};
   const profiles = {
     BIO_MAX,
+    NICK_MAX,
+    // What to call the signed-in person on their own screens: their nickname, if they've
+    // set one, otherwise their username.
+    nameFor(account) {
+      return (account && profiles.get(account.username).nickname) || (account && account.username) || '';
+    },
     get(username) {
       if (backend.enabled) return cleanProfile(profileCache[profileKey(username)]);
       const all = read(localStorage, KEY.profiles, {});
