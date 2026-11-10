@@ -43,8 +43,9 @@ CC.start(function () {
   function renderCard() {
     const birthday = form.elements.birthday.value;
     const bio = form.elements.bio.value.trim();
-    fill(document.getElementById('card-photo'), CC.ui.avatar(account.username, photo, 128));
     const nickname = form.elements.nickname.value.replace(/\s+/g, ' ').trim();
+    // Shows the picture with its outline as it will look, while the nickname is typed.
+    fill(document.getElementById('card-photo'), CC.ui.avatar(account.username, photo, 128, { nickname }));
     document.getElementById('card-name').textContent = nickname || account.username;
     const meta = nickname ? ['@' + account.username, account.role] : [account.role];
     if (account.participantId) meta.push('block ' + CC.slotNumber(account.participantId));
@@ -248,7 +249,7 @@ CC.start(function () {
     saved.textContent = 'Saved.';
     // Updates the picture and name in the header.
     document.querySelectorAll('.profile-link .avatar').forEach((el) =>
-      el.replaceWith(CC.ui.avatar(CC.profiles.nameFor(account), profile.photo, 24)));
+      el.replaceWith(CC.ui.avatar(CC.profiles.nameFor(account), profile.photo, 24, { nickname: profile.nickname })));
     document.querySelectorAll('[data-who]').forEach((el) => (el.textContent = `${account.role} · ${CC.profiles.nameFor(account)}`));
   });
 
