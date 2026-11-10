@@ -113,7 +113,7 @@
     const quality = h('dd', null, '—');
     const exertion = h('dd', null, '—');
     const state = h('span', { class: 'block-state' }, 'starting');
-    const nameEl = h('h2', { class: 'block-name' }, CC.displayName(slot));
+    const nameEl = h('h2', { class: 'block-name' }, opts.name || CC.displayName(slot));
     const exList = h('ol', { class: 'block-ex' });
     const issues = h('div', { class: 'issues' }, h('p', null, 'Waiting for the first rep'));
     if (patient) issues.setAttribute('aria-live', 'polite');
@@ -246,7 +246,7 @@
         quality.textContent = snap.quality == null ? '—' : snap.quality + '%';
         exertion.textContent = snap.exertion == null ? '—' : fmtExertion(snap.exertion) + '/10';
         state.textContent = snap.head;
-        nameEl.textContent = CC.displayName(snap);
+        nameEl.textContent = opts.name || CC.displayName(snap);
         renderExercises(snap.exercises);
         // During a possible emergency, "no reps" and "not moving" add nothing (the alert says
         // more), and telling the person to carry on would contradict it.
@@ -373,12 +373,14 @@
         (el.textContent = `Data is saved on the server at ${CC.backend.url}.`));
     }
     document.querySelectorAll('[data-who]').forEach((el) => {
-      el.textContent = `${account.role} · ${account.username}`;
+      // The nickname, if they've set one; the username is in the tooltip.
+      el.textContent = `${account.role} · ${CC.profiles.nameFor(account)}`;
+      el.title = 'Signed in as ' + account.username;
       // Profile link with the picture, just before the name.
       if (!el.parentNode.querySelector('.profile-link')) {
         const profile = CC.profiles.get(account.username);
         el.before(h('a', { class: 'profile-link', href: 'profile.html' },
-          avatar(account.username, profile.photo, 24), 'Profile'));
+          avatar(CC.profiles.nameFor(account), profile.photo, 24), 'Profile'));
       }
     });
     document.querySelectorAll('[data-today]').forEach((el) => (el.textContent = fmtDate(new Date())));
@@ -393,7 +395,7 @@
         const where = CC.backend.enabled ? 'on the server' : 'in this browser';
         if (confirm(`Delete every session, name and workout saved ${where} and start again with sample data?`)) {
           CC.store.reset().then(
-            () => (location.href = CC.auth.home(account)),
+            () => CC.go(CC.auth.home(account)),
             (err) => alert(`Couldn’t reset: ${err.message}`));
         }
       }));

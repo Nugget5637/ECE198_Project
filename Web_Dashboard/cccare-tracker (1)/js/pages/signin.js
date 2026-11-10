@@ -16,6 +16,11 @@ CC.start(function () {
     const up = mode === 'signup';
     signin.hidden = up;
     signup.hidden = !up;
+    // The form that appears slides in (restarting the animation each time).
+    const shown = up ? signup : signin;
+    shown.classList.remove('form-in');
+    void shown.offsetWidth;
+    shown.classList.add('form-in');
     title.textContent = up ? 'Sign up' : 'Sign in';
     document.title = `${up ? 'Sign up' : 'Sign in'} · CCCARE exercise tracking`;
     switchText.textContent = up ? 'Already have an account?' : 'First time here?';
@@ -56,7 +61,7 @@ CC.start(function () {
     const outcome = await CC.auth.signIn(username, password);
     busy(signin, false);
     if (outcome.account) {
-      location.href = CC.auth.home(outcome.account);
+      CC.go(CC.auth.home(outcome.account));
       return;
     }
     error.textContent = outcome.error;
@@ -77,7 +82,7 @@ CC.start(function () {
       const outcome = await CC.auth.signUp(f.username.value, f.password.value, role);
       busy(signup, false);
       if (outcome.account) {
-        location.href = CC.auth.home(outcome.account);
+        CC.go(CC.auth.home(outcome.account));
         return;
       }
       problem = outcome.error;

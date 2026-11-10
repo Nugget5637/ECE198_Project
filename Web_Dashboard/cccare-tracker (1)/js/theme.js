@@ -69,13 +69,19 @@
     };
     night.addEventListener('click', () => {
       const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
-      apply(next);
+      const change = () => {
+        apply(next);
+        render();
+      };
+      // The new colours spread out from the button (see motion.js).
+      const r = night.getBoundingClientRect();
+      if (window.CC && CC.motion) CC.motion.themeChange(change, r.left + r.width / 2, r.top + r.height / 2);
+      else change();
       try {
         localStorage.setItem(KEY, next);
       } catch (e) {
         /* still switches for this page */
       }
-      render();
     });
     night.addEventListener('refresh', render);
     render();

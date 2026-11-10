@@ -59,10 +59,10 @@ Each participant result is the output of `Tracker.result()` in `js/score.js`. Th
 
 | Method and path | Who | Body / response |
 | --- | --- | --- |
-| `GET /profiles/<username>` | yourself, or an instructor | `{ "bio", "birthday", "photo" }` (empty strings if none) |
+| `GET /profiles/<username>` | yourself, or an instructor | `{ "nickname", "bio", "birthday", "photo" }` (empty strings if none) |
 | `PUT /profiles/<username>` | yourself | the same object |
 
-`bio` is at most 500 characters. `birthday` is `YYYY-MM-DD` or empty. `photo` is a `data:image/jpeg;base64,...` URL (the page shrinks pictures to 256 × 256 first, so they are usually 15–40 KB), or empty.
+`nickname` is at most 30 characters; the patient's own screens show it instead of their username. `bio` is at most 500 characters. `birthday` is `YYYY-MM-DD` or empty. `photo` is a `data:image/jpeg;base64,...` URL (the page shrinks pictures to 256 × 256 first, so they are usually 15–40 KB), or empty.
 
 ## Live session
 

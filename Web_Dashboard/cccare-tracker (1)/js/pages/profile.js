@@ -1,4 +1,4 @@
-/* Profile for whoever is signed in: a picture, a birthday and a short biography.
+/* Profile for whoever is signed in: a picture, a nickname, a birthday and a short biography.
    The picture comes from a file (the paperclip) or the camera (the browser asks for
    permission first). Either way it's cropped to a square and shrunk to 256 pixels before
    it's saved, so it's small enough to store. */
@@ -30,6 +30,7 @@ CC.start(function () {
   form.elements.birthday.min = '1900-01-01';
   form.elements.birthday.value = profile.birthday;
   form.elements.bio.value = profile.bio;
+  form.elements.nickname.value = profile.nickname;
 
   function age(birthday) {
     const [y, m, d] = birthday.split('-').map(Number);
@@ -43,8 +44,9 @@ CC.start(function () {
     const birthday = form.elements.birthday.value;
     const bio = form.elements.bio.value.trim();
     fill(document.getElementById('card-photo'), CC.ui.avatar(account.username, photo, 128));
-    document.getElementById('card-name').textContent = account.username;
-    const meta = [account.role];
+    const nickname = form.elements.nickname.value.replace(/\s+/g, ' ').trim();
+    document.getElementById('card-name').textContent = nickname || account.username;
+    const meta = nickname ? ['@' + account.username, account.role] : [account.role];
     if (account.participantId) meta.push('block ' + CC.slotNumber(account.participantId));
     if (birthday) meta.push(`born ${fmtDate(birthday + 'T12:00:00')} (age ${age(birthday)})`);
     document.getElementById('card-meta').textContent = meta.join(' · ');
@@ -61,6 +63,7 @@ CC.start(function () {
     renderCard();
   }
   form.elements.bio.addEventListener('input', changed);
+  form.elements.nickname.addEventListener('input', changed);
   form.elements.birthday.addEventListener('change', changed);
 
   // Center-crops an image (or a video frame) to a square and redraws it at PHOTO_PX as a
@@ -228,7 +231,7 @@ CC.start(function () {
       error.textContent = 'Enter a birthday between 1900 and today.';
       return;
     }
-    const next = { bio: form.elements.bio.value.trim(), birthday, photo };
+    const next = { nickname: form.elements.nickname.value, bio: form.elements.bio.value.trim(), birthday, photo };
     const btn = form.querySelector('button[type=submit]');
     btn.disabled = true;
     saved.textContent = 'Saving…';
@@ -243,9 +246,10 @@ CC.start(function () {
     }
     profile = CC.profiles.get(account.username);
     saved.textContent = 'Saved.';
-    // Updates the picture in the header.
+    // Updates the picture and name in the header.
     document.querySelectorAll('.profile-link .avatar').forEach((el) =>
-      el.replaceWith(CC.ui.avatar(account.username, profile.photo, 24)));
+      el.replaceWith(CC.ui.avatar(CC.profiles.nameFor(account), profile.photo, 24)));
+    document.querySelectorAll('[data-who]').forEach((el) => (el.textContent = `${account.role} · ${CC.profiles.nameFor(account)}`));
   });
 
   renderCard();

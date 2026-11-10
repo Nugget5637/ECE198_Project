@@ -336,7 +336,7 @@ class Handler(SimpleHTTPRequestHandler):
             if method == 'GET':
                 if who != me['username'].lower() and me['role'] != 'instructor':
                     raise ApiError(403, 'You can only see your own profile.')
-                return 200, d['profiles'].get(who, {'bio': '', 'birthday': '', 'photo': ''})
+                return 200, d['profiles'].get(who, {'nickname': '', 'bio': '', 'birthday': '', 'photo': ''})
             if method == 'PUT':
                 if who != me['username'].lower():
                     raise ApiError(403, 'You can only change your own profile.')
@@ -344,15 +344,18 @@ class Handler(SimpleHTTPRequestHandler):
                 if not isinstance(b, dict):
                     raise ApiError(400, 'Send a profile object.')
                 bio = str(b.get('bio') or '')
+                nickname = ' '.join(str(b.get('nickname') or '').split())
                 birthday = str(b.get('birthday') or '')
                 photo = str(b.get('photo') or '')
+                if len(nickname) > 30:
+                    raise ApiError(400, 'Nicknames are limited to 30 characters.')
                 if len(bio) > 500:
                     raise ApiError(400, 'The biography is limited to 500 characters.')
                 if birthday and not BIRTHDAY.match(birthday):
                     raise ApiError(400, 'Birthdays are written YYYY-MM-DD.')
                 if photo and (len(photo) > 300_000 or not PHOTO.match(photo)):
                     raise ApiError(400, 'The picture must be a JPEG, PNG or WebP data URL under 300 KB.')
-                d['profiles'][who] = {'bio': bio, 'birthday': birthday, 'photo': photo}
+                d['profiles'][who] = {'nickname': nickname, 'bio': bio, 'birthday': birthday, 'photo': photo}
                 s.save()
                 return 200, {'ok': True}
 
