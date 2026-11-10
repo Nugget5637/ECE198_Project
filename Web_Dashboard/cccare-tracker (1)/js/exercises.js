@@ -299,6 +299,11 @@
     Object.assign(CC.EXERCISES[code], t, { gif: `img/exercises/${code}.gif` });
   }
 
+  // Exercises done on the floor. Being on the floor during these is normal; during any
+  // other exercise it may mean a fall (see Tracker.dangers in score.js).
+  ['push_up', 'plank', 'crunch', 'glute_bridge', 'superman', 'bird_dog', 'mountain_climbers']
+    .forEach((code) => (CC.EXERCISES[code].floor = true));
+
   // Largest workout the set-up screen allows. Rest is in seconds, after each set.
   CC.WORKOUT_LIMITS = { exercises: 8, sets: 10, reps: 100, restMin: 15, restMax: 300, rest: 45 };
 

@@ -13,6 +13,15 @@
     faultHoldSeconds: 10, // a form fault stays on screen this long after it was seen
     recentReps: 5, // the quality figure on each block is the average of the last five reps
     errorReps: 2, // a form fault, or going over the planned reps, only counts once at least this many reps show it
+
+    // ---- safety (see Tracker.condition) ----
+    stillMotion: 0.05, // camera movement level (0-1) below which someone counts as not moving
+    stillSeconds: 30, // not moving for this long (outside a planned rest) is flagged
+    unconsciousSeconds: 15, // fallen, or on the floor in a standing exercise, and not moving this long
+    exhaustedExertion: 9, // exertion at or above this for exhaustedSeconds counts as exhausted
+    exhaustedSeconds: 20,
+    exhaustedPeak: 9.5, // exertion this high counts as exhausted straight away
+    qualityDrop: 30, // the last 3 reps this many points below the usual: a sudden change
   };
 
   // ---------- scoring ----------
@@ -85,6 +94,20 @@
       this.exertionCount = 0;
       this.exertionPeak = null;
       this.lastRepAt = startedAt;
+
+      // Safety signals from the camera pipeline. Their times are real (wall-clock) times,
+      // not session time, so they keep counting while the session is paused.
+      this.startedAt = startedAt;
+      this.motionAt = -Infinity; // when the last movement level arrived (-Infinity: none ever)
+      this.stillSince = null; // when they stopped moving, or null while moving
+      this.posture = null; // 'upright', 'floor' or 'fallen'; null until the pipeline says
+      this.fallAt = null;
+      this.highSince = null; // when exertion reached exhaustedExertion
+      this.lastRepReal = null;
+      this.allQualities = [];
+      this.ack = ''; // the alert the instructor has marked as checked
+      this.incidents = []; // every possible emergency, for the saved result
+      this.activeKinds = new Set();
     }
 
     seconds(since, now) {
@@ -115,8 +138,29 @@
     }
 
     // Events come from the simulator or the live socket, already validated by feed.js.
-    apply(event, now) {
+    // now is session time (it stands still while paused); real is the wall-clock time.
+    apply(event, now, real) {
+      if (real == null) real = now;
+      if (event.type === 'motion') {
+        this.motionAt = real;
+        if (event.level < LIMITS.stillMotion) {
+          if (this.stillSince == null) this.stillSince = real;
+        } else {
+          this.stillSince = null;
+        }
+        return;
+      }
+      if (event.type === 'posture') {
+        if (event.posture === 'fallen' && this.posture !== 'fallen') this.fallAt = real;
+        if (event.posture !== 'fallen') this.fallAt = null;
+        this.posture = event.posture;
+        return;
+      }
       if (event.type === 'rep') {
+        // A rep means they're moving, and upright enough to exercise.
+        this.stillSince = null;
+        this.lastRepReal = real;
+        this.allQualities.push(event.quality);
         const pos = this.nextPosition(event.exercise, now);
         this.ex = pos.ex;
         this.set = pos.set;
@@ -139,7 +183,141 @@
         this.exertionSum += event.value;
         this.exertionCount += 1;
         this.exertionPeak = Math.max(this.exertionPeak == null ? 0 : this.exertionPeak, event.value);
+        if (event.value >= LIMITS.exhaustedExertion) {
+          if (this.highSince == null) this.highSince = real;
+        } else {
+          this.highSince = null;
+        }
       }
+    }
+
+    // ---------- safety ----------
+
+    // Seconds without movement, from the camera's movement level. null when the pipeline
+    // doesn't send movement levels (then only "no reps" can be told).
+    stillFor(real) {
+      if (this.motionAt === -Infinity) return null;
+      return this.stillSince == null ? 0 : this.seconds(this.stillSince, real);
+    }
+
+    // Form suddenly much worse: the last 3 reps against the 10 before them.
+    qualityDropped() {
+      const q = this.allQualities;
+      if (q.length < 8) return false;
+      return mean(q.slice(-13, -3)) - mean(q.slice(-3)) >= LIMITS.qualityDrop;
+    }
+
+    // Signs that someone may be hurt, exhausted or unconscious, most serious first. Each is
+    // { kind: 'unconscious' | 'hurt' | 'exhausted', message, cue }. A sign is a reason to go
+    // and check on the person; the camera can't tell for certain.
+    dangers(real) {
+      const list = [];
+      const still = this.stillFor(real);
+      const ex = CC.EXERCISES[this.current().exercise];
+      const floorExercise = !!(ex && ex.floor);
+      const fallen = this.posture === 'fallen';
+      const downUnexpectedly = fallen || (this.posture === 'floor' && !floorExercise);
+
+      if (downUnexpectedly && still != null && still >= LIMITS.unconsciousSeconds) {
+        list.push({
+          kind: 'unconscious',
+          summary: fallen ? 'Possibly unconscious after a fall' : 'Possibly unconscious on the floor',
+          message: `May be unconscious: ${fallen ? 'fell and has' : 'on the floor and has'} not moved for ${fmtDuration(still)}`,
+          cue: 'Stay still. Your instructor is coming to check on you.',
+        });
+      } else if (fallen) {
+        list.push({
+          kind: 'hurt',
+          summary: 'Possible fall',
+          message: `May be hurt: fell ${fmtDuration(this.seconds(this.fallAt, real))} ago`,
+          cue: 'Stay where you are. Your instructor is coming to help.',
+        });
+      } else if (downUnexpectedly) {
+        list.push({
+          kind: 'hurt',
+          summary: 'On the floor during a standing exercise',
+          message: 'May be hurt: on the floor during a standing exercise',
+          cue: 'Stay where you are. Your instructor is coming to check on you.',
+        });
+      }
+
+      const high = this.highSince == null ? 0 : this.seconds(this.highSince, real);
+      if (this.exertion != null && (this.exertion >= LIMITS.exhaustedPeak || high >= LIMITS.exhaustedSeconds)) {
+        list.push({
+          kind: 'exhausted',
+          summary: `Possibly exhausted (effort ${fmtExertion(this.exertion)} of 10)`,
+          message: `May be exhausted: effort ${fmtExertion(this.exertion)} of 10${high >= 1 ? ` for ${fmtDuration(high)}` : ''}`,
+          cue: 'Stop now and rest. Sit down and breathe slowly.',
+        });
+      } else if (this.exertion != null && this.exertion >= LIMITS.exertionHigh && this.qualityDropped()) {
+        list.push({
+          kind: 'exhausted',
+          summary: 'Possibly exhausted (high effort, form suddenly worse)',
+          message: `May be exhausted: effort ${fmtExertion(this.exertion)} of 10 and form suddenly much worse`,
+          cue: 'Stop now and rest. Sit down and breathe slowly.',
+        });
+      }
+
+      // Form suddenly much worse, then stopped part-way through a set: possibly in pain.
+      if (!list.some((d) => d.kind === 'hurt') && this.qualityDropped() && !this.setFinished() && !this.complete() &&
+        this.lastRepReal != null && this.seconds(this.lastRepReal, real) >= LIMITS.idleSeconds) {
+        list.push({
+          kind: 'hurt',
+          summary: 'Possibly hurt (form suddenly worse, then stopped mid-set)',
+          message: 'May be hurt: form suddenly got much worse, then stopped mid-set',
+          cue: 'If anything hurts, stop. Your instructor is coming to check on you.',
+        });
+      }
+      return list;
+    }
+
+    // What state someone is in: { state, label, danger, key, acknowledged, still }.
+    // state is 'waiting', 'exercising', 'resting', 'still' (not moving for a while),
+    // 'done' or 'danger'. The label is a few words for the block.
+    condition(real) {
+      const danger = this.dangers(real);
+      const key = danger.map((d) => d.kind).join('+');
+      if (!key) this.ack = ''; // once it's over, the next alert shows in full again
+
+      // Keep a record of each new kind of alert for the saved result.
+      const kinds = new Set(danger.map((d) => d.kind));
+      for (const d of danger) {
+        if (!this.activeKinds.has(d.kind)) {
+          this.incidents.push({ kind: d.kind, message: d.summary, atMs: Math.max(0, real - this.startedAt) });
+        }
+      }
+      this.activeKinds = kinds;
+
+      const still = this.stillFor(real);
+      const resting = this.reps > 0 && this.setFinished() && !this.complete();
+      const stillLimit = resting ? this.restSeconds() + LIMITS.stillSeconds : LIMITS.stillSeconds;
+      let state;
+      let label;
+      if (danger.length) {
+        state = 'danger';
+        label = 'Possible emergency';
+      } else if (this.complete()) {
+        state = 'done';
+        label = 'Finished';
+      } else if (still != null && still >= stillLimit) {
+        state = 'still';
+        label = `Not moving for ${fmtDuration(still)}`;
+      } else if (!this.reps) {
+        state = 'waiting';
+        label = 'Waiting to start';
+      } else if (resting) {
+        state = 'resting';
+        label = 'Resting';
+      } else {
+        state = 'exercising';
+        label = 'Exercising';
+      }
+      return { state, label, danger, key, acknowledged: !!key && key === this.ack, still };
+    }
+
+    // The instructor has checked on them: the alert stops pulsing until a different one starts.
+    acknowledge(key) {
+      this.ack = key || '';
     }
 
     current() {
@@ -233,7 +411,7 @@
     }
 
     // What needs attention right now, most urgent first. Each item is { message, cue }.
-    issues(now) {
+    issues(now, real) {
       const list = [];
       const e = this.current();
       const finished = this.complete();
@@ -262,7 +440,10 @@
       if (!finished) {
         const idle = this.seconds(this.lastRepAt, now);
         const allowed = this.reps && this.setFinished() ? this.restSeconds() + LIMITS.idleSeconds : LIMITS.idleSeconds;
-        if (idle >= allowed) list.push({ message: `No reps for ${fmtDuration(idle)}`, cue: 'Carry on when you’re ready.' });
+        // With movement levels from the camera, say when they've stopped moving altogether.
+        const cond = this.condition(real == null ? now : real);
+        if (cond.state === 'still') list.push({ message: cond.label, cue: 'Is everything OK? Carry on when you’re ready.' });
+        else if (idle >= allowed) list.push({ message: `No reps for ${fmtDuration(idle)}`, cue: 'Carry on when you’re ready.' });
       }
       return list;
     }
@@ -286,7 +467,9 @@
     }
 
     // Everything a block needs to draw itself. The patient's screen gets the same object.
-    snapshot(now) {
+    snapshot(now, real) {
+      if (real == null) real = now;
+      const condition = this.condition(real);
       const finished = this.complete();
       return {
         id: this.id,
@@ -311,7 +494,8 @@
             current: !finished && i === this.ex,
           };
         }),
-        issues: this.issues(now),
+        issues: this.issues(now, real),
+        condition,
       };
     }
 
@@ -350,6 +534,7 @@
         id: this.id,
         name: this.name,
         stoppedAt: stop,
+        incidents: this.incidents.slice(),
         exercisesPlanned: this.plan.length,
         exercises,
         repsDone: this.reps,

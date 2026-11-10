@@ -781,6 +781,64 @@ select option { background: var(--paper); color: var(--ink); }
 .empty { max-width: 560px; }
 .empty p { margin-top: 14px; }
 
+/* ---------- safety: possible emergency ---------- */
+
+/* the whole block gets a thick pulsing red outline */
+.block.danger, .block.danger-ack { position: relative; outline: 5px solid var(--alarm); outline-offset: -5px; }
+.block.danger { animation: danger 0.9s ease-in-out infinite; }
+@keyframes danger { 50% { outline-color: var(--alarm-faint); } }
+.block-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px 10px;
+  background: var(--alarm);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.3;
+}
+.block-alert[hidden] { display: none; }
+.block-alert-text { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.block-alert-text span { font-weight: 400; }
+.block-ack {
+  appearance: none;
+  border: 0;
+  margin: 0;
+  flex: none;
+  padding: 6px 8px;
+  background: #fff;
+  color: #111;
+  font: 700 11px/1.1 var(--sans);
+  cursor: pointer;
+}
+.block-ack:hover, .block-ack:focus-visible { background: #111; color: #fff; }
+.block-ack[disabled] { opacity: 0.7; cursor: default; }
+.block-large .block-alert { padding: 18px 22px 14px; font-size: 18px; }
+
+/* the person's state, under their name */
+.block-cond { padding: 2px 14px 0; font: 11px/1.3 var(--mono); color: var(--muted); }
+.block-cond::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; background: currentColor; vertical-align: 1px; }
+.cond-exercising { color: var(--ink); }
+.cond-still { color: var(--red); font-weight: 700; }
+.cond-danger { color: var(--red); font-weight: 700; }
+.block-large .block-cond { padding: 4px 22px 0; font-size: 14px; }
+
+.incident { color: var(--red); font-weight: 700; }
+/* a warning triangle in front of the text (the font has no warning sign) */
+.warn::before {
+  content: "";
+  display: inline-block;
+  width: 0.95em;
+  height: 0.85em;
+  margin-right: 0.35em;
+  vertical-align: -0.05em;
+  background: currentColor;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+.results-table tbody tr:hover .incident { color: inherit; }
+.emergency-list { display: inline-flex; flex-wrap: wrap; gap: 4px 14px; color: var(--red); }
+.emergency-list b { animation: rec 1s steps(1, end) infinite; }
+
 /* ---------- ended early ---------- */
 
 .ended-early {
@@ -883,7 +941,7 @@ select option { background: var(--paper); color: var(--ink); }
 @media (prefers-reduced-motion: reduce) {
   .rec { animation: none; }
   .ring-arc, .bar i, .ended-early-toggle .arrow { transition: none; }
-  .issues.alert { animation: none; }
+  .issues.alert, .block.danger, .emergency-list b { animation: none; }
 }
 .wk-note { margin: 2px 0 4px; }
 .wk-ex small { font-weight: 400; }
