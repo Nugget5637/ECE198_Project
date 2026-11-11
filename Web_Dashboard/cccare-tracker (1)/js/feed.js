@@ -26,6 +26,12 @@
     return v.filter((f) => typeof f === 'string' && f.trim()).map((f) => f.trim().slice(0, 60)).slice(0, 3);
   }
   const num = (x) => (typeof x === 'number' && Number.isFinite(x) ? x : null);
+  // Posture names the pipeline may send, and what the dashboard calls them.
+  const POSTURES = {
+    upright: 'upright', standing: 'upright', sitting: 'upright', kneeling: 'upright',
+    floor: 'floor', lying: 'floor',
+    fallen: 'fallen', fall: 'fallen',
+  };
 
   function normalize(raw) {
     if (!raw || typeof raw !== 'object') return null;
@@ -42,6 +48,15 @@
       return v == null ? null : { type: 'exertion', pid, value: clamp(v, 0, 10) };
     }
     if (raw.type === 'faults') return { type: 'faults', pid, faults: toFaults(raw.faults) };
+    if (raw.type === 'motion') {
+      // How much the person is moving, 0 (completely still) to 1.
+      const v = num(raw.level != null ? raw.level : raw.value);
+      return v == null ? null : { type: 'motion', pid, level: clamp(v, 0, 1) };
+    }
+    if (raw.type === 'posture') {
+      const posture = POSTURES[String(raw.posture || '').toLowerCase()];
+      return posture ? { type: 'posture', pid, posture } : null;
+    }
     return null;
   }
 
@@ -79,8 +94,58 @@
         state: 'rest',
         nextAt: 0,
         tickAt: 0,
+        motionAt: 0,
+        posture: null,
+        incident: null, // { kind: 'fall' | 'faint' | 'exhaust', at, started }
       };
     });
+
+    // Now and then someone in the simulation has an emergency, so the safety alerts can be
+    // seen. ?incidents=N in the page address makes N people have one (for a demonstration);
+    // otherwise each person has a 2% chance. The time is 25 to 80 simulated seconds in.
+    const forced = Math.max(0, Math.min(people.length, Math.round(Number(CC.util.param('incidents')) || 0)));
+    const chosen = new Set(forced ? shuffle(people, rnd).slice(0, forced) : people.filter(() => rnd() < 0.02));
+    const KINDS = ['fall', 'faint', 'exhaust'];
+    [...chosen].forEach((p, i) => {
+      p.incident = { kind: forced ? KINDS[i % KINDS.length] : pick(KINDS, rnd), delay: 25 + rnd() * 55, started: false };
+    });
+
+    function setPosture(p, posture) {
+      if (p.posture === posture) return;
+      p.posture = posture;
+      emit({ type: 'posture', pid: p.id, posture });
+    }
+
+    // Movement level and posture, about every 1.5 seconds.
+    function body(p, now) {
+      if (now < p.motionAt) return;
+      p.motionAt = now + 1500 / speed;
+      const w = p.plan[Math.min(p.ex, p.plan.length - 1)];
+      let level;
+      if (p.state === 'incident') {
+        level = p.incident.kind === 'faint' ? rnd() * 0.02 : p.incident.kind === 'fall' ? 0.08 + rnd() * 0.12 : 0.1 + rnd() * 0.1;
+      } else if (p.state === 'work') {
+        level = 0.5 + rnd() * 0.4;
+      } else {
+        level = 0.12 + rnd() * 0.22;
+      }
+      emit({ type: 'motion', pid: p.id, level: Math.round(level * 100) / 100 });
+      if (p.state !== 'incident') setPosture(p, CC.EXERCISES[w.exercise].floor && p.state !== 'done' ? 'floor' : 'upright');
+    }
+
+    function startIncident(p, now) {
+      p.incident.started = true;
+      if (p.incident.kind === 'exhaust') {
+        // Pushes on with effort climbing and form falling apart, then stops mid-set.
+        p.exGain = 0.9;
+        p.fatigue = 60;
+        p.stopAt = p.inSet + 4;
+        return;
+      }
+      p.state = 'incident';
+      setPosture(p, 'fallen');
+      p.motionAt = now;
+    }
 
     function stopFor(p, w) {
       const r = rnd();
@@ -90,6 +155,9 @@
     }
 
     function step(p, now) {
+      body(p, now);
+      if (p.incident && !p.incident.started && now >= p.incident.at) startIncident(p, now);
+      if (p.state === 'incident') return;
       // Exertion comes back down while resting.
       if (p.state !== 'work' && now >= p.tickAt) {
         if (p.exertion > p.exBase + 0.25) {
@@ -119,8 +187,16 @@
       p.exertion = clamp(p.exertion + p.exGain + gauss(rnd) * 0.12, 0, 10);
       emit({ type: 'exertion', pid: p.id, value: half(p.exertion) });
 
+      if (p.incident && p.incident.started && p.incident.kind === 'exhaust' && p.inSet >= p.stopAt) {
+        p.state = 'incident'; // stops part-way through the set, exhausted
+        p.exertion = Math.max(p.exertion, 9.5);
+        emit({ type: 'exertion', pid: p.id, value: half(p.exertion) });
+        return;
+      }
       if (p.inSet < p.stopAt) {
-        let gap = p.tempo * (0.85 + rnd() * 0.3);
+        // Cardio and held exercises have their own pace; others go at the person's tempo.
+        const tempo = CC.EXERCISES[w.exercise].tempo || p.tempo;
+        let gap = tempo * (0.85 + rnd() * 0.3);
         if (rnd() < 0.04) gap += 2 + rnd() * 5; // a short breather, shorter than a rest
         p.nextAt = now + (gap * 1000) / speed;
         return;
@@ -138,9 +214,14 @@
         p.state = 'done';
         return;
       }
+      // Rests roughly as long as the instructor set for the exercise just done. Never less
+      // than the gap the tracker needs to see a new set starting.
       p.state = 'rest';
-      p.nextAt = now + ((22 + rnd() * 30) * 1000) / speed;
+      const rest = Math.max(CC.LIMITS.setGapSeconds + 1, CC.restOf(w) * (0.8 + rnd() * 0.4));
+      p.nextAt = now + (rest * 1000) / speed;
     }
+
+    let pausedAt = null;
 
     return {
       label: speed === 1 ? 'simulated' : `simulated ×${speed}`,
@@ -150,6 +231,7 @@
         people.forEach((p) => {
           p.nextAt = now + ((1 + rnd() * 4) * 1000) / speed;
           p.tickAt = now + 4000 / speed;
+          if (p.incident) p.incident.at = now + (p.incident.delay * 1000) / speed;
         });
         timer = setInterval(() => {
           const now = Date.now();
@@ -159,6 +241,28 @@
       stop() {
         clearInterval(timer);
         timer = null;
+      },
+      // Everyone freezes where they are; on resume their next rep is pushed back by the pause.
+      pause() {
+        if (pausedAt != null) return;
+        pausedAt = Date.now();
+        clearInterval(timer);
+        timer = null;
+      },
+      resume() {
+        if (pausedAt == null) return;
+        const shift = Date.now() - pausedAt;
+        pausedAt = null;
+        people.forEach((p) => {
+          p.nextAt += shift;
+          p.tickAt += shift;
+          p.motionAt += shift;
+          if (p.incident && !p.incident.started) p.incident.at += shift;
+        });
+        timer = setInterval(() => {
+          const now = Date.now();
+          people.forEach((p) => step(p, now));
+        }, 100);
       },
     };
   }
@@ -171,6 +275,7 @@
     let stopped = false;
     let retries = 0;
     let retryTimer = null;
+    let paused = false;
 
     const send = (msg) => {
       if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
@@ -202,7 +307,11 @@
         }
         (Array.isArray(data) ? data : [data]).forEach((raw) => {
           const ev = normalize(raw);
-          if (ev && wanted.has(ev.pid)) emit(ev);
+          if (!ev || !wanted.has(ev.pid)) return;
+          // While paused, reps and form feedback don't count, but the safety signals
+          // (movement, posture, exertion) still do.
+          if (paused && (ev.type === 'rep' || ev.type === 'faults')) return;
+          emit(ev);
         });
       };
       ws.onclose = () => {
@@ -221,6 +330,14 @@
         clearTimeout(retryTimer);
         send({ type: 'session', state: 'end' });
         if (ws) ws.close();
+      },
+      pause() {
+        paused = true;
+        send({ type: 'session', state: 'pause' });
+      },
+      resume() {
+        paused = false;
+        send({ type: 'session', state: 'resume' });
       },
     };
   }
